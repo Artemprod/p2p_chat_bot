@@ -1,4 +1,5 @@
 from bot_main import TOKEN
+from bot_main import bd_password,bd_host,bd_port
 from telegram.ext import Updater
 from telegram.ext import MessageHandler, Filters
 from telegram.ext import CommandHandler
@@ -246,6 +247,5 @@ class ChatBot:
 if __name__ == "__main__":
     bot = ChatBot(TOKEN)
     bot.start()
-    db_adapter = DBAdapter('postgres','Portnov1991', '127.0.0.1','5432', 'ChatBot_p2_delivery')
-
+    db_adapter = DBAdapter('postgres',bd_password,bd_host,bd_port, 'ChatBot_p2_delivery')
 
