@@ -1,3 +1,5 @@
+import condition as condition
+
 from bot_main import TOKEN
 from bot_main import bd_password,bd_host,bd_port
 from telegram.ext import Updater
@@ -97,6 +99,44 @@ class DBAdapter:  # responsible for Users and Chats
         except(Exception,Error) as e:
             print("Ошибка при создании нового чата:", e)
 
+    def get_offers(self)->list:
+        try:
+            update_chat_query = f"""
+                    SELECT 
+                            u."UserName",
+	                        p.title,
+                            
+                            p.description,
+                            p.departure_country,
+                            p.departure_city,
+                            p.destination_country,
+                            p.destination_city,
+                            p.price
+                            
+                    FROM packages as p
+                    LEFT JOIN public.users as u on u.user_id = p.custumer_user_id ;
+            """
+            self.cursor.execute(update_chat_query)
+            self.connection.commit()
+            result = self.cursor.fetchall()
+            data_list =[]
+            for row in (result):
+                data = {}
+                data['user_name'] = row[0]
+                data['title'] = row[1]
+                data['description'] = row[2]
+                data['departure_country'] = row[3]
+                data['departure_city'] = row[4]
+                data['destination_country'] = row[5]
+                data['destination_city'] = row[6]
+                data['price'] = float(row[7])
+                data_list.append(data)
+            print(f"Данные по заказам получены ")
+            return data_list
+        except(Exception, Error) as e:
+            print("Ошибка при получении данных о заказах :", e)
+
+
     def update_chat_status(self, new_status, user_id, chat_id):
         try:
             update_chat_query = f"""
@@ -108,6 +148,8 @@ class DBAdapter:  # responsible for Users and Chats
             print(f"Статус чата: {chat_id} для пользователя: {user_id} обновлен. Статус чата: {new_status}")
         except(Exception, Error) as e:
             print("Ошибка при обновлении статуса :", e)
+
+
 
 
     def get_chat(self, chat_id) -> dict:
@@ -137,18 +179,44 @@ class DBAdapter:  # responsible for Users and Chats
         except(Exception, Error) as e:
             print("Ошибка при получении статутса чата:", e)
 
+    def insert_one(self, table, column1, column2, value1, value2):
+        try:
+            create_chat_query = f"""
+             INSERT INTO {table} ({column1},{column2})
+             VALUES ({value1},{value2});
+             """
+            self.cursor.execute(create_chat_query)
+            self.connection.commit()
+        except(Exception, Error) as e:
+            print("Ошибка при создании нового чата:", e)
+
+    def ubdate_test_data(self, table,column,value,where_column,condition):
+        try:
+            update_chat_query = f"""
+                        UPDATE {table} SET {column} = {value}
+                        WHERE {where_column} = {condition};
+                        """
+
+
+            self.cursor.execute(update_chat_query)
+            self.connection.commit()
+        except(Exception, Error) as e:
+            print("Ошибка при создании нового чата:", e)
 
 
 
 
 
 class ChatBot:
-    def __init__(self, token):
+    def __init__(self, token, db_adapter):
         self.updater = Updater(token=token)
         message_handler = MessageHandler(Filters.text | Filters.contact & (~ Filters.command), self.message_handler)
         # start_command_handler = CommandHandler('start', self.command_start)
         self.updater.dispatcher.add_handler(message_handler)
         # self.updater.dispatcher.add_handler(start_command_handler)
+        self.offers = db_adapter.get_offers()
+
+
 
 
     def start(self):
@@ -160,6 +228,7 @@ class ChatBot:
         user_id = update.effective_user.id
         chat = db_adapter.get_chat(chat_id)
         user = db_adapter.get_user(user_id)
+        data_generator = self.data_generator(self.offers)
 
 
 
@@ -181,18 +250,29 @@ class ChatBot:
             self.keybord_contact(update, context)
         elif chat_status == 3:
             self.ask_phone_number(update, context)
-        elif chat_status == 4:
-            pass
+            if update.message.contact.phone_number:
+                self.main_menu_keyboard(update)
+                db_adapter.update_chat_status(5, update.effective_user.id, update.effective_chat.id)
+        elif chat_status == 4: # status of main menu. Show main menu to user
+            self.main_menu_keyboard(update)
 
-        # elif chat_status == 4:
-        #     self.ask_phone_number(update, context)
-        #
-        # elif chat_status == 5:
-        #     context.bot.send_message(chat_id=update.effective_chat.id, text='Супер, телефон сохранен',
-        #                              reply_markup=ReplyKeyboardRemove())
-        #     db_adapter.update_chat_status(6, update.effective_user.id, update.effective_chat.id)
-        # elif chat_status == 6:
-        #     pass
+        elif chat_status == 5: # main menu handler
+            if update.message.text == 'Я хочу взять посылку':
+                ofer_text = self.data_from_dict_to_text(next(data_generator))
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text=f"{ofer_text}", reply_markup =ReplyKeyboardRemove())
+                self.next_previus_menu(update)
+                db_adapter.update_chat_status(6,update.effective_user.id, update.effective_chat.id)
+            elif update.message.text == 'Я хочу заказать доставку':
+                pass
+            elif update.message.text == 'Я хочу разместить свой маршрут':
+                pass
+        elif chat_status == 6:
+            if update.message.text == 'Следующий заказ':
+                ofer_text = self.data_from_dict_to_text(next(data_generator))
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"{ofer_text}")
+
 
 
 
@@ -224,7 +304,28 @@ class ChatBot:
         db_adapter.ubpdate_phone_number(update.message.contact.phone_number,update.effective_user.id)
         context.bot.send_message(chat_id=update.effective_chat.id,
                                  text="Записал", reply_markup= ReplyKeyboardRemove())
-        db_adapter.update_chat_status(4, update.effective_user.id, update.effective_chat.id)
+
+    def data_generator(self, data_list):
+        for i in data_list:
+            yield i
+
+
+    def data_from_dict_to_text(self, data):
+        text = f"""                              
+Что нужно сделать:{data['title']}        
+Кто просит {data['user_name']}           
+Откуда забрать                           
+            Страна: {data['departure_country']}  
+            Город:  {data['departure_city']}     
+Куда привезти                            
+            Страна: {data['destination_country']}
+            Город:  {data['destination_city']}   
+Стоимость: {data['price']} рублей        
+Описание: {data['description']}          
+
+    """
+        return text
+
 
 
     def keybord_boolen(self, update):
@@ -237,15 +338,23 @@ class ChatBot:
         markup_contact = ReplyKeyboardMarkup(button,one_time_keyboard=True, row_width=1, resize_keyboard=True )
         update.message.reply_text('Нажми на кнопку, чтобы отправить контакт', reply_markup=markup_contact)
 
-    def main_menu_keyboard(self,update,context):
-        pass
+    def main_menu_keyboard(self,update):
+        take_order = KeyboardButton('Я хочу взять посылку')
+        give_offer = KeyboardButton('Я хочу заказать доставку')
+        give_rute =  KeyboardButton('Я хочу разместить свой маршрут')
+        menu_list = [[give_offer], [take_order,give_rute]]
+        markup_main_menu = ReplyKeyboardMarkup(menu_list, resize_keyboard=True)
+        update.message.reply_text('Что ты хочешь сделать?', reply_markup=markup_main_menu)
 
-
-
-
-
+    def next_previus_menu(self,update):
+        next_order = KeyboardButton('Следующий заказ')
+        # give_offer = KeyboardButton('Предыдущий заказ')
+        menu_list = [[next_order]]
+        markup_main_menu = ReplyKeyboardMarkup(menu_list, resize_keyboard=True)
+        update.message.reply_text('показать еще?', reply_markup=markup_main_menu)
 if __name__ == "__main__":
-    bot = ChatBot(TOKEN)
+    db_adapter = DBAdapter('postgres', bd_password, bd_host, bd_port, 'ChatBot_p2_delivery')
+    bot = ChatBot(TOKEN,db_adapter)
     bot.start()
-    db_adapter = DBAdapter('postgres',bd_password,bd_host,bd_port, 'ChatBot_p2_delivery')
+
 
