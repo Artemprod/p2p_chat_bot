@@ -1,6 +1,5 @@
 from enum import Enum
-from bot_main import TOKEN
-from bot_main import bd_password, bd_host, bd_port
+from secrets import SECRETS
 from psycopg2._psycopg import connection
 from telegram.ext import Updater
 from telegram.ext import MessageHandler, Filters
@@ -1105,7 +1104,8 @@ class ChatBot:
 if __name__ == "__main__":
     db_user = "postgres"
     bot = ChatBot(
-        token=TOKEN, bd_password=bd_password, bd_host=bd_host, bd_port=bd_port, db_user=db_user
+        token=SECRETS.token, bd_password=SECRETS.bd_password,
+        bd_host=SECRETS.bd_host, bd_port=SECRETS.bd_port, db_user=SECRETS.bd_user
     )
     try:
         bot.start()
