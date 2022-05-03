@@ -442,7 +442,7 @@ class ShowOffers(DBAdapter):
 
                     FROM packages as p
                     LEFT JOIN public.users as u on u.user_id = p.custumer_user_id
-                    WHERE status = 'created' and  departure_city ='{filters.departure_city}'
+                    WHERE status = 'created' and departure_city ='{filters.departure_city}'
                     and  destination_country = '{filters.destination_country}' 
                     ORDER BY package_id
                     LIMIT 1 
@@ -467,8 +467,11 @@ class ShowOffers(DBAdapter):
 
                     FROM packages as p
                     LEFT JOIN public.users as u on u.user_id = p.custumer_user_id
-                    WHERE status = 'created' and  departure_city ='{filters.departure_city}'
-                    and  destination_country = '{filters.destination_country}' and package_id > {package_id}
+                    WHERE status = 'created' AND 
+                    departure_city ='{filters.departure_city}' AND 
+                    destination_country = '{filters.destination_country}' AND 
+                    package_id > {package_id}
+                    
                     ORDER BY package_id
                     LIMIT 1 
 """
@@ -529,8 +532,7 @@ class ShowOffers(DBAdapter):
     def get_previous_row_id(self, user_id):
         try:
             query = f"""
-                SELECT 
-                    package_id 
+                SELECT package_id 
                 FROM public.shown_offers
                 WHERE user_id = {user_id}
             """

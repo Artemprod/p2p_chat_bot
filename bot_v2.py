@@ -47,7 +47,7 @@ class UserActionRequest(str, Enum):
 class ChatStatus(int, Enum):
     ASK_USER_NAME = 1
     ASK_USER_PHONE = 2
-    SHOW_OFFER = 9
+    SHOW_OFFERS = 9
 
 
 class OfferStatus(str, Enum):
@@ -92,6 +92,43 @@ class ChatBot:
                 connector.close()
             except psycopg2.Error as ex:
                 LOG.error("Failed to close db connector %s: %s", connector, ex)
+
+    def show_offers(self, update: Update, context: CallbackContext):
+        filters_params = self.db_adapter.get_filter(update.effective_user.id)
+        filters = OfferFilter(
+            departure_city=filters_params['departure_city'],
+            destination_country=filters_params['destination_city']
+        )
+        if update.message.text == UserOffersActionsRequests.NEXT_OFFER.value:
+            package_id = self.offers.get_previous_row_id(update.effective_user.id)
+            next_offer = self.offers.get_next_row(package_id, filters=filters)
+
+            if next_offer is not None:
+                next_offer_dict = self.offers.query_to_dict(next_offer)
+                text = self.data_from_dict_to_text(next_offer_dict)
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"{text}",
+                                         reply_markup=self.inline_menu_take_order())
+                package_id = next_offer_dict['package_id']
+                self.offers.previous_shown_offer(update.effective_user.id, package_id)
+            else:
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"Ты посмотрел все новые заказы. сейчас будут по второму кругу")
+
+                first_row = self.offers.get_one_row(filters=filters)
+                row_dict = self.offers.query_to_dict(first_row)
+                self.offers.previous_shown_offer(update.effective_user.id, row_dict['package_id'])
+
+        elif update.message.text == UserOffersActionsRequests.SHOW_MY_OFFERS.value:
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text=f"Что ты хочешь посмотреть", reply_markup=self.my_work())
+            self.db_adapter.update_chat_status(10, update.effective_user.id, update.effective_chat.id)
+
+        elif update.message.text == UserOffersActionsRequests.BACK_TO_MAIN_MENU.value:
+            self.db_adapter.update_chat_status(5, update.effective_user.id, update.effective_chat.id)
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text=f"Что ты хочешь сделать'",
+                                     reply_markup=self.main_menu_keyboard(update))
 
     def message_handler(self, update: Update, context: CallbackContext):
         chat_id = update.effective_chat.id
@@ -157,8 +194,9 @@ class ChatBot:
             filter_param = self.db_adapter.get_filter(update.effective_user.id)
 
             context.bot.send_message(chat_id=update.effective_chat.id,
-                                     text=f"'Показать все заказы из города: {filter_param['departure_city']} "
-                                          f"которые нужно доставить в город {filter_param['destination_city']}\n все верно ?",
+                                     text=f"Показать все заказы из города: {filter_param['departure_city']} "
+                                          f"которые нужно доставить в город {filter_param['destination_city']}\n "
+                                          f"все верно ?",
                                      reply_markup=self.keyboard_boolean(update))
 
             self.db_adapter.update_chat_status(8, update.effective_user.id, update.effective_chat.id)
@@ -169,58 +207,29 @@ class ChatBot:
                     departure_city=filters_params['departure_city'],
                     destination_country=filters_params['destination_city']
                 )
-                first_row = self.offers.get_one_row(filters=filters)
-                row_dict = self.offers.query_to_dict(first_row)
+                offer = self.offers.get_one_row(filters=filters)
 
-                if first_row is not None:
+                if offer is not None:
+                    offer_as_dict: dict = self.offers.query_to_dict(offer)
                     context.bot.send_message(chat_id=update.effective_chat.id,
                                              text=f"Держи заказы",
                                              reply_markup=self.next_previous_menu())
                     context.bot.send_message(chat_id=update.effective_chat.id,
-                                             text=f"{self.data_from_dict_to_text(row_dict)}",
+                                             text=self.data_from_dict_to_text(offer_as_dict),
                                              reply_markup=self.inline_menu_take_order())
-                    self.offers.previous_shown_offer(update.effective_user.id, row_dict['package_id'])
-                    self.db_adapter.update_chat_status(9, update.effective_user.id, update.effective_chat.id)
+                    self.offers.previous_shown_offer(update.effective_user.id, offer_as_dict['package_id'])
+
+                    self.db_adapter.update_chat_status(
+                        new_status=ChatStatus.SHOW_OFFERS.value,
+                        user_id=update.effective_user.id,
+                        chat_id=update.effective_chat.id
+                    )
                 else:
                     context.bot.send_message(chat_id=update.effective_chat.id,
                                              text=f"Нет заказов", reply_markup=self.take_order_chose_change_menu())
                     self.db_adapter.update_chat_status(11, update.effective_user.id, update.effective_chat.id)
-        elif chat_status == ChatStatus.SHOW_OFFER:
-            filters_params = self.db_adapter.get_filter(update.effective_user.id)
-            filters = OfferFilter(
-                departure_city=filters_params['departure_city'],
-                destination_country=filters_params['destination_city']
-            )
-            if update.message.text == UserOffersActionsRequests.NEXT_OFFER.value:
-                package_id = self.offers.get_previous_row_id(update.effective_user.id)
-                first_row = self.offers.get_one_row(filters=filters)
-                next_offer = self.offers.get_next_row(package_id, filters=filters)
-
-                if next_offer is not None:
-                    next_offer_dict = self.offers.query_to_dict(next_offer)
-                    package_id = next_offer_dict['package_id']
-                    self.offers.previous_shown_offer(update.effective_user.id, package_id)
-                    text = self.data_from_dict_to_text(next_offer_dict)
-                    context.bot.send_message(chat_id=update.effective_chat.id,
-                                             text=f"{text}",
-                                             reply_markup=self.inline_menu_take_order())
-                else:
-                    row_dict = self.offers.query_to_dict(first_row)
-                    self.offers.previous_shown_offer(update.effective_user.id, row_dict['package_id'])
-                    context.bot.send_message(chat_id=update.effective_chat.id,
-                                             text=f"Ты посмотрел все новые заказы. сейчас будут по второму кругу")
-
-            elif update.message.text == UserOffersActionsRequests.SHOW_MY_OFFERS.value:
-                context.bot.send_message(chat_id=update.effective_chat.id,
-                                         text=f"Что ты хочешь посмотреть", reply_markup=self.my_work())
-                self.db_adapter.update_chat_status(10, update.effective_user.id, update.effective_chat.id)
-
-            elif update.message.text == UserOffersActionsRequests.BACK_TO_MAIN_MENU.value:
-                self.db_adapter.update_chat_status(5, update.effective_user.id, update.effective_chat.id)
-                context.bot.send_message(chat_id=update.effective_chat.id,
-                                         text=f"Что ты хочешь сделать'",
-                                         reply_markup=self.main_menu_keyboard(update))
-
+        elif chat_status == ChatStatus.SHOW_OFFERS:
+            self.show_offers(update=update, context=context)
         elif chat_status == 10:
             if update.message.text == UserOffersActionsRequests.OFFER_IN_PROGRESS.value:
                 if self.db_adapter.get_my_offers(update.effective_user.id):
@@ -354,7 +363,7 @@ class ChatBot:
             yield i
 
     @classmethod
-    def data_from_dict_to_text(cls, data):
+    def data_from_dict_to_text(cls, data) -> str:
         text = f"""                              
 Что нужно сделать:{data['title']}        
 Кто просит {data['user_name']}           
@@ -443,7 +452,7 @@ class ChatBot:
     def next_previous_menu(cls):
         next_order = KeyboardButton(UserOffersActionsRequests.NEXT_OFFER.value)
         show_my_offers = KeyboardButton(UserOffersActionsRequests.SHOW_MY_OFFERS.value)
-        back_to_main_menu = back_to_main_menu = KeyboardButton(UserOffersActionsRequests.BACK_TO_MAIN_MENU.value)
+        back_to_main_menu = KeyboardButton(UserOffersActionsRequests.BACK_TO_MAIN_MENU.value)
         menu_list = [[next_order, show_my_offers], [back_to_main_menu]]
         markup_main_menu = ReplyKeyboardMarkup(menu_list, resize_keyboard=True)
         return markup_main_menu
