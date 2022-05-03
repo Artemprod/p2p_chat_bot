@@ -14,6 +14,7 @@ from psycopg2 import Error
 import logging
 from logs import init_logging
 from datetime import datetime
+import datetime as date
 import re
 
 
@@ -33,12 +34,16 @@ class UserOffersActionsRequests(str, Enum):
     SHOW_MY_OFFERS ='Посмотреть заказы которые я взял'
     OFFER_IN_PROGRESS ='Заказы в работе'
     DONE_OFFERS = 'Завершенные заказы'
+    BACK_TO_NEW_OFFERS = 'Обратно к новм заказам'
+    BACK_TO_MAIN_MENU = 'Обратно в главное меню'
 
 
 class UserActionRequest(str, Enum):
     TAKE_ORDER = 'Я хочу взять посылку'
     GIVE_OFFER = 'Я хочу заказать доставку'
     GIVE_RUTE = 'Я хочу разместить свой маршрут'
+    CHANGE_DESTANATION_CITY = 'Изменить город отправления'
+    CHANGE_DEPARTUE_CITY= 'Изменить город прибывания'
 
 
 class ChatStatus(int, Enum):
@@ -54,7 +59,7 @@ class OfferStatus(str, Enum):
 
 
 class DBAdapter:  # responsible for Users and Chats
-    def __init__(self, user, password, host, port, database):
+    def __init__(self, user, password, host, port, database,):
         try:
             self.connection = psycopg2.connect(user=user,
                                                password=password,
@@ -397,6 +402,48 @@ class DBAdapter:  # responsible for Users and Chats
         except(Exception, Error) as e:
             print('Ошибка в конвертирование даных заказов ', e)
 
+class GiveOffer(DBAdapter):
+    def __init__(self, user, password, host, port, database, callback_data = None):
+        super().__init__(user, password, host, port, database)
+        self.callback_data = callback_data
+
+    def create_package(self,custumer_user_id):
+        try:
+            created_date = date.date.today()
+            query  = f"""
+            INSERT INTO packages (custumer_user_id, created_date,status)
+                    VALUES ({custumer_user_id}, '{created_date}','created')
+            RETURNING package_id
+    
+    """
+            self.cursor.execute(query)
+            self.connection.commit()
+            package_id = self.cursor.fetchone()[0]
+            self.callback_data = package_id
+        except(Exception, Error) as e:
+            LOG.debug("Ошибка в создани посылки ", e)
+
+    def write_departure_city(self):
+        print(self.callback_data)
+
+    def write_destination_city(self):
+        print(self.callback_data)
+
+    def write_dispatch_date(self):
+        pass
+
+    def write_type_of_package(self):
+        pass
+
+    def write_size_of_package(self):
+        pass
+
+    def write_description(self):
+        pass
+
+    def write_price(self):
+        pass
+
 
 
 class ShowOffers(DBAdapter):
@@ -633,8 +680,8 @@ class OfferWork(DBAdapter):
 class ChatBot:
     def __init__(self, token: str, db_adapter: DBAdapter):
         self.updater = Updater(token=token)
-        # message_handler = MessageHandler(Filters.text | Filters.contact & (~ Filters.command) , self.message_handler)
-        message_handler = MessageHandler(Filters.all, self.message_handler)
+        message_handler = MessageHandler(Filters.text | Filters.contact & (~ Filters.command), self.message_handler)
+        # message_handler = MessageHandler(Filters.all, self.message_handler)
         query_handler = CallbackQueryHandler(self.callback_handler)
         self.updater.dispatcher.add_handler(message_handler)
         self.updater.dispatcher.add_handler(query_handler)
@@ -680,7 +727,9 @@ class ChatBot:
         elif chat_status == 3:
             self.ask_phone_number(update, context)
             if update.message.contact.phone_number:
-                self.main_menu_keyboard(update)
+
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"что хочешь сделать?", reply_markup=self.main_menu_keyboard(update))
                 db_adapter.update_chat_status(5, update.effective_user.id, update.effective_chat.id)
 
         elif chat_status == 4:  # status of main menu. Show main menu to user
@@ -694,7 +743,9 @@ class ChatBot:
 
 
             elif update.message.text == UserActionRequest.GIVE_OFFER.value:
-                pass
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"{'В каком городе нужно забрать посылку? '}", reply_markup=ReplyKeyboardRemove())
+                db_adapter.update_chat_status(12, update.effective_user.id, update.effective_chat.id)
             elif update.message.text == UserActionRequest.GIVE_RUTE.value:
                 pass
         elif chat_status == 6:
@@ -732,7 +783,12 @@ class ChatBot:
                     db_adapter.update_chat_status(9, update.effective_user.id, update.effective_chat.id)
                 else:
                     context.bot.send_message(chat_id=update.effective_chat.id,
-                                             text=f"Нет заказов")
+
+                                             text=f"Нет заказов", reply_markup=self.take_order_chose_change_menu())
+                    db_adapter.update_chat_status(11, update.effective_user.id, update.effective_chat.id)
+
+
+
         elif chat_status == 9:
             filters_params = db_adapter.get_filter(update.effective_user.id)
             offers = ShowOffers('postgres', bd_password, bd_host, bd_port, 'ChatBot_p2_delivery',
@@ -763,16 +819,24 @@ class ChatBot:
                                          text=f"Что ты хочешь посмотреть", reply_markup=self.my_work())
                 db_adapter.update_chat_status(10, update.effective_user.id, update.effective_chat.id)
 
+            elif update.message.text == UserOffersActionsRequests.BACK_TO_MAIN_MENU.value:
+                db_adapter.update_chat_status(5, update.effective_user.id, update.effective_chat.id)
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"Что ты хочешь сделать'",
+                                         reply_markup=self.main_menu_keyboard(update))
+
         elif chat_status == 10:
 
             if update.message.text == UserOffersActionsRequests.OFFER_IN_PROGRESS.value:
-                for i in db_adapter.get_my_offers(update.effective_user.id):
-                    data_dict = db_adapter.query_to_dict_orders(i)
-                    text = self.data_from_dict_to_text_orders(data_dict)
+                if db_adapter.get_my_offers(update.effective_user.id):
+                    for i in db_adapter.get_my_offers(update.effective_user.id):
+                        data_dict = db_adapter.query_to_dict_orders(i)
+                        text = self.data_from_dict_to_text_orders(data_dict)
+                        context.bot.send_message(chat_id=update.effective_chat.id,
+                                                 text=f"{text}", reply_markup=self.inline_menu_close_order())
+                else:
                     context.bot.send_message(chat_id=update.effective_chat.id,
-                                             text=f"{text}", reply_markup=self.inline_menu_close_order())
-
-
+                                             text=f"Нету заказов в работе")
 
             elif update.message.text == UserOffersActionsRequests.DONE_OFFERS.value:
                 offers = db_adapter.get_finished_offers()
@@ -781,9 +845,41 @@ class ChatBot:
                     text = self.data_from_dict_to_text_finished_orders(query_dict)
                     context.bot.send_message(chat_id=update.effective_chat.id,
                                              text=f"{text}")
+            elif update.message.text == UserOffersActionsRequests.BACK_TO_NEW_OFFERS.value:
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"Жми кнопку 'Следующий закз "
+                                              f"чтобы посмотреть новые заказы если они есть '", reply_markup= self.next_previous_menu())
+                db_adapter.update_chat_status(9, update.effective_user.id, update.effective_chat.id)
+
+            elif update.message.text == UserOffersActionsRequests.BACK_TO_MAIN_MENU.value:
+                db_adapter.update_chat_status(5, update.effective_user.id, update.effective_chat.id)
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"Что ты хочешь сделать'",
+                                         reply_markup=self.main_menu_keyboard(update))
+
+        elif chat_status == 11:
+            if update.message.text == UserOffersActionsRequests.BACK_TO_MAIN_MENU.value:
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"Что ты хочешь сделать'",
+                                         reply_markup=self.main_menu_keyboard(update))
+                db_adapter.update_chat_status(5, update.effective_user.id, update.effective_chat.id)
 
 
+            elif update.message.text == UserActionRequest.CHANGE_DEPARTUE_CITY.value:
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"{'С какого города поедешь?'}",
+                                         reply_markup=ReplyKeyboardRemove())
+                db_adapter.update_chat_status(6, update.effective_user.id, update.effective_chat.id)
 
+            elif update.message.text == UserActionRequest.CHANGE_DESTANATION_CITY.value:
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"В какой город поедешь?''",
+                                         reply_markup=ReplyKeyboardRemove())
+                db_adapter.update_chat_status(7, update.effective_user.id, update.effective_chat.id)
+
+
+            elif chat_status == 12:
+                pass
     @classmethod
     def command_start(cls, update: Update):
         if update.message.text == '/start':
@@ -944,17 +1040,28 @@ class ChatBot:
     def main_menu_keyboard(cls, update):
         take_order = KeyboardButton(UserActionRequest.TAKE_ORDER.value)
         give_offer = KeyboardButton(UserActionRequest.GIVE_OFFER.value)
-        give_rute = KeyboardButton(UserActionRequest.GIVE_RUTE.value)
-        menu_list = [[give_offer], [take_order, give_rute]]
+        # give_rute = KeyboardButton(UserActionRequest.GIVE_RUTE.value)
+        menu_list = [[give_offer,take_order]]
         markup_main_menu = ReplyKeyboardMarkup(menu_list, resize_keyboard=True)
-        update.message.reply_text('Что ты хочешь сделать?', reply_markup=markup_main_menu)
+        return markup_main_menu
+
+    @classmethod
+    def take_order_chose_change_menu(cls, ):
+        main_menu = KeyboardButton(UserOffersActionsRequests.BACK_TO_MAIN_MENU.value)
+        change_departue_city = KeyboardButton(UserActionRequest.CHANGE_DEPARTUE_CITY.value)
+        change_destanation_city = KeyboardButton(UserActionRequest.CHANGE_DESTANATION_CITY.value)
+
+        # give_rute = KeyboardButton(UserActionRequest.GIVE_RUTE.value)
+        menu_list = [[main_menu], [change_departue_city, change_destanation_city]]
+        markup_main_menu = ReplyKeyboardMarkup(menu_list, resize_keyboard=True)
+        return markup_main_menu
 
     @classmethod
     def next_previous_menu(cls):
         next_order = KeyboardButton(UserOffersActionsRequests.NEXT_OFFER.value)
         show_my_offers = KeyboardButton(UserOffersActionsRequests.SHOW_MY_OFFERS.value)
-        # give_offer = KeyboardButton('Предыдущий заказ')
-        menu_list = [[next_order], [show_my_offers]]
+        back_to_main_menu = back_to_main_menu = KeyboardButton(UserOffersActionsRequests.BACK_TO_MAIN_MENU.value)
+        menu_list = [[next_order, show_my_offers], [back_to_main_menu]]
         markup_main_menu = ReplyKeyboardMarkup(menu_list, resize_keyboard=True)
         return markup_main_menu
 
@@ -962,7 +1069,9 @@ class ChatBot:
     def my_work(cls):
         offer_in_progress = KeyboardButton(UserOffersActionsRequests.OFFER_IN_PROGRESS.value)
         done_offers = KeyboardButton(UserOffersActionsRequests.DONE_OFFERS.value)
-        menu_list = [[offer_in_progress, done_offers]]
+        back_to_new_offers = KeyboardButton(UserOffersActionsRequests.BACK_TO_NEW_OFFERS.value)
+        back_to_main_menu = KeyboardButton(UserOffersActionsRequests.BACK_TO_MAIN_MENU.value)
+        menu_list = [[offer_in_progress, done_offers],[back_to_new_offers, back_to_main_menu]]
         markup_main_menu = ReplyKeyboardMarkup(menu_list, resize_keyboard=True)
         return markup_main_menu
 
@@ -984,7 +1093,11 @@ class ChatBot:
         markup_inline_close_menu = InlineKeyboardMarkup(buttons_list)
         return markup_inline_close_menu
 
+
+
 if __name__ == "__main__":
     db_adapter = DBAdapter('postgres', bd_password, bd_host, bd_port, 'ChatBot_p2_delivery')
+    give_data = GiveOffer('postgres', bd_password, bd_host, bd_port, 'ChatBot_p2_delivery')
+
     bot = ChatBot(token=TOKEN, db_adapter=db_adapter)
     bot.start()
