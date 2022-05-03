@@ -12,7 +12,7 @@ from telegram.ext import CallbackQueryHandler
 from telegram.ext import MessageHandler, Filters
 from telegram.ext import Updater
 
-from db_connectors import (
+from db.db_connectors import (
     ShowOffers, DBAdapter, GiveOffer, OffersInWork, OfferFilter, OfferWorkFilter
 )
 from logs import init_logging
