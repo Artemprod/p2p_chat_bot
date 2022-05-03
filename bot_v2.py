@@ -13,7 +13,7 @@ from telegram.ext import MessageHandler, Filters
 from telegram.ext import Updater
 
 from db.db_connectors import (
-    ShowOffers, DBAdapter, GiveOffer, OffersInWork, OfferFilter, OfferWorkFilter
+    ShowOffers, DBAdapter, GiveOffer, OffersInWork, OfferFilter, OfferWorkFilter, DBOffersManager
 )
 from logs import init_logging
 from secrets import SECRETS
@@ -80,6 +80,10 @@ class ChatBot:
             db_user, bd_password, bd_host, bd_port, 'ChatBot_p2_delivery'
         )
         self.offers_in_work = OffersInWork(
+            db_user, bd_password, bd_host, bd_port, 'ChatBot_p2_delivery'
+        )
+
+        self.offers_manager = DBOffersManager(
             db_user, bd_password, bd_host, bd_port, 'ChatBot_p2_delivery'
         )
 

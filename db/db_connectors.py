@@ -5,11 +5,16 @@ All logic for database
 import datetime as date
 import logging
 from datetime import datetime
+from typing import Optional
 
 import psycopg2
 from psycopg2 import Error
 from psycopg2._psycopg import connection
 from pydantic import BaseModel
+from sqlalchemy import and_
+from sqlmodel import Session, SQLModel, create_engine, select
+
+from db.tables import OfferInDB
 
 LOG = logging.getLogger(__name__)
 
@@ -408,6 +413,7 @@ class GiveOffer(DBAdapter):
 class OfferFilter(BaseModel):
     departure_city: str
     destination_country: str
+    departure_country: Optional[str] = None
 
 
 class ShowOffers(DBAdapter):
@@ -638,3 +644,28 @@ class OffersInWork(DBAdapter):
             self.connection.commit()
         except(Exception, Error) as e:
             LOG.debug('Ошибка окончания заказа', e)
+
+
+class DBOffersManager:
+    def __init__(self, user, password, host, port, database):
+        self.engine = create_engine(url=f"postgresql://{user}:{password}@${host}:{port}/${database}")
+        SQLModel.metadata.create_all(self.engine)
+
+    def add_offer(self, offer: OfferInDB):
+        with Session(self.engine) as session:
+            session.add(offer)
+            session.commit()
+
+    def find_one_offer(self, filters: OfferFilter) -> OfferInDB:
+        params = [
+            OfferInDB.departure_city == filters.departure_city,
+            OfferInDB.destination_country == filters.destination_country
+        ]
+        if filters.departure_country is not None:
+            params.append(OfferInDB.departure_country == filters.departure_country)
+
+        with Session(self.engine) as session:
+            statement = select(OfferInDB).where(and_(*params))
+            offer: "OfferInDB" = session.exec(statement).first()
+            return offer
+
