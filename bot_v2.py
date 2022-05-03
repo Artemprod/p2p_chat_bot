@@ -1,6 +1,7 @@
 from enum import Enum
 from bot_main import TOKEN
 from bot_main import bd_password, bd_host, bd_port
+from psycopg2._psycopg import connection
 from telegram.ext import Updater
 from telegram.ext import MessageHandler, Filters
 from telegram.ext import CallbackContext
@@ -16,9 +17,7 @@ from logs import init_logging
 from datetime import datetime
 import datetime as date
 import re
-
-
-
+from pydantic import BaseModel
 
 init_logging()
 
@@ -31,8 +30,8 @@ class UserOffersActionsRequests(str, Enum):
     TAKE_OFFER = 'Взять заказ'
     NO_OFFERS_MESSAGE = 'Сейчас заказов нет'
     CLOSE_OFFER = 'Закрыть заказ'
-    SHOW_MY_OFFERS ='Посмотреть заказы которые я взял'
-    OFFER_IN_PROGRESS ='Заказы в работе'
+    SHOW_MY_OFFERS = 'Посмотреть заказы которые я взял'
+    OFFER_IN_PROGRESS = 'Заказы в работе'
     DONE_OFFERS = 'Завершенные заказы'
     BACK_TO_NEW_OFFERS = 'Обратно к новм заказам'
     BACK_TO_MAIN_MENU = 'Обратно в главное меню'
@@ -43,12 +42,13 @@ class UserActionRequest(str, Enum):
     GIVE_OFFER = 'Я хочу заказать доставку'
     GIVE_RUTE = 'Я хочу разместить свой маршрут'
     CHANGE_DESTANATION_CITY = 'Изменить город отправления'
-    CHANGE_DEPARTUE_CITY= 'Изменить город прибывания'
+    CHANGE_DEPARTUE_CITY = 'Изменить город прибывания'
 
 
 class ChatStatus(int, Enum):
     ASK_USER_NAME = 1
     ASK_USER_PHONE = 2
+    SHOW_OFFER = 9
 
 
 class OfferStatus(str, Enum):
@@ -59,17 +59,22 @@ class OfferStatus(str, Enum):
 
 
 class DBAdapter:  # responsible for Users and Chats
-    def __init__(self, user, password, host, port, database,):
+    def __init__(self, user, password, host, port, database, ):
         try:
-            self.connection = psycopg2.connect(user=user,
-                                               password=password,
-                                               host=host,
-                                               port=port,
-                                               database=database)
+            self.connection: "connection" = psycopg2.connect(
+                user=user,
+                password=password,
+                host=host,
+                port=port,
+                database=database
+            )
             self.cursor = self.connection.cursor()
             LOG.debug("Соединение с базой установлено")
         except(Exception, Error) as e:
             LOG.error("Ошибка работы с базой:", e)
+
+    def close(self):
+        self.connection.close()
 
     def create_user(self,
                     first_name: str,
@@ -324,9 +329,6 @@ class DBAdapter:  # responsible for Users and Chats
         except(Exception, Error) as e:
             LOG.debug('Ошибка получения всех оферов в работе', e)
 
-
-
-
     def get_finished_offers(self):
         try:
             query = f"""
@@ -353,8 +355,9 @@ class DBAdapter:  # responsible for Users and Chats
             result = self.cursor.fetchall()
             print(result)
             return result
-        except(Exception,Error) as e:
-            LOG.debug('Ошибка в выдаче завершенных закзаов',e )
+        except(Exception, Error) as e:
+            LOG.debug('Ошибка в выдаче завершенных закзаов', e)
+
     @staticmethod
     def query_to_dict_orders(rows):
         try:
@@ -376,7 +379,7 @@ class DBAdapter:  # responsible for Users and Chats
             return data
 
         except(Exception, Error) as e:
-                print('Ошибка в конвертирование даных заказов ', e)
+            print('Ошибка в конвертирование даных заказов ', e)
 
     @staticmethod
     def query_to_dict_finishd_orders(rows):
@@ -402,15 +405,16 @@ class DBAdapter:  # responsible for Users and Chats
         except(Exception, Error) as e:
             print('Ошибка в конвертирование даных заказов ', e)
 
+
 class GiveOffer(DBAdapter):
-    def __init__(self, user, password, host, port, database, callback_data = None):
+    def __init__(self, user, password, host, port, database, callback_data=None):
         super().__init__(user, password, host, port, database)
         self.callback_data = callback_data
 
-    def create_package(self,custumer_user_id):
+    def create_package(self, custumer_user_id):
         try:
             created_date = date.date.today()
-            query  = f"""
+            query = f"""
             INSERT INTO packages (custumer_user_id, created_date,status)
                     VALUES ({custumer_user_id}, '{created_date}','created')
             RETURNING package_id
@@ -421,7 +425,7 @@ class GiveOffer(DBAdapter):
             package_id = self.cursor.fetchone()[0]
             self.callback_data = package_id
         except(Exception, Error) as e:
-            LOG.debug("Ошибка в создани посылки ", e)
+            LOG.debug("Ошибка в создании посылки ", e)
 
     def write_departure_city(self):
         print(self.callback_data)
@@ -445,27 +449,29 @@ class GiveOffer(DBAdapter):
         pass
 
 
+class OfferFilter(BaseModel):
+    departure_city: str
+    destination_country: str
+
 
 class ShowOffers(DBAdapter):
-    def __init__(self, user, password, host, port, database, departure_city, destination_country):
+    def __init__(self, user, password, host, port, database):
         super().__init__(user, password, host, port, database)
-        self.departure_city = departure_city
-        self.destination_country = destination_country
 
-    def count_rows(self):
+    def count_rows(self, filters: OfferFilter):
         count = f"""
                 SELECT 
                         COUNT(*)
                 FROM packages as p
                 LEFT JOIN public.users as u on u.user_id = p.custumer_user_id
-                WHERE status = 'created' and  departure_city ='{self.departure_city}'
-                and  destination_country = '{self.destination_country}';"""
+                WHERE status = 'created' and  departure_city ='{filters.departure_city}'
+                and  destination_country = '{filters.destination_country}';"""
         self.cursor.execute(count)
         self.connection.commit()
         result = self.cursor.fetchall()
         return result[0][0]
 
-    def get_one_row(self):
+    def get_one_row(self, filters: OfferFilter):
         query = f"""
                     SELECT 
                         p.package_id,
@@ -480,8 +486,8 @@ class ShowOffers(DBAdapter):
 
                     FROM packages as p
                     LEFT JOIN public.users as u on u.user_id = p.custumer_user_id
-                    WHERE status = 'created' and  departure_city ='{self.departure_city}'
-                    and  destination_country = '{self.destination_country}' 
+                    WHERE status = 'created' and  departure_city ='{filters.departure_city}'
+                    and  destination_country = '{filters.destination_country}' 
                     ORDER BY package_id
                     LIMIT 1 
     """
@@ -490,7 +496,7 @@ class ShowOffers(DBAdapter):
         result = self.cursor.fetchone()
         return result
 
-    def get_next_row(self, package_id):
+    def get_next_row(self, package_id: str, filters: OfferFilter):
         query = f"""
                     SELECT 
                         p.package_id,
@@ -505,8 +511,8 @@ class ShowOffers(DBAdapter):
 
                     FROM packages as p
                     LEFT JOIN public.users as u on u.user_id = p.custumer_user_id
-                    WHERE status = 'created' and  departure_city ='{self.departure_city}'
-                    and  destination_country = '{self.destination_country}' and package_id > {package_id}
+                    WHERE status = 'created' and  departure_city ='{filters.departure_city}'
+                    and  destination_country = '{filters.destination_country}' and package_id > {package_id}
                     ORDER BY package_id
                     LIMIT 1 
 """
@@ -514,9 +520,6 @@ class ShowOffers(DBAdapter):
         self.connection.commit()
         result = self.cursor.fetchone()
         return result
-
-
-
 
     @staticmethod
     def query_to_dict(rows):
@@ -539,7 +542,7 @@ class ShowOffers(DBAdapter):
         except(Exception, Error) as e:
             print('Ошибка в конвертирование даных', e)
 
-    def previous_shown_offer(self, user_id, packeg_id):
+    def previous_shown_offer(self, user_id, packeg_id: int):
         try:
             select_query = f"""
             SELECT * FROM shown_offers
@@ -549,7 +552,7 @@ class ShowOffers(DBAdapter):
             self.connection.commit()
             result = self.cursor.fetchone()
 
-            if result == None:
+            if result is None:
                 insert_query = f"""
                 INSERT INTO shown_offers (user_id, package_id)
                 VALUES ({user_id}, {packeg_id})
@@ -595,24 +598,27 @@ class ShowOffers(DBAdapter):
             result = self.cursor.fetchone()[0]
             return result
         except(Exception, Error) as e:
-            LOG.debug('Ошибка извлечеия ID пользователя по ID посылки')
+            LOG.debug('Ошибка извлечения ID пользователя по ID посылки')
 
-class OfferWork(DBAdapter):
-    def __init__(self,user, password, host, port, database, costumer_id, executer_id, package_id, chat_id):
-        super().__init__(user, password, host, port, database,)
-        self.costumer_id = costumer_id
-        self.executer_id = executer_id
-        self.package_id = package_id
-        self.order_chat_id = chat_id
 
-    def check_working(self):
+class OfferWorkFilter(BaseModel):
+    costumer_id: int
+    executer_id: int
+    package_id: int
+    order_chat_id: int
+
+
+class OffersInWork(DBAdapter):
+
+    def check_working(self, filters: OfferWorkFilter):
         query = f"""
                SELECT 
                costumer_id,
                executor_id, 
                package_id
                FROM orders
-               WHERE costumer_id ={self.costumer_id} and  executor_id = {self.executer_id} and package_id ={self.package_id}
+               WHERE costumer_id ={filters.costumer_id} and 
+               executor_id = {filters.executer_id} and package_id = {filters.package_id}
                 ;
                """
         self.cursor.execute(query)
@@ -620,12 +626,13 @@ class OfferWork(DBAdapter):
         result = self.cursor.fetchone()
         return result
 
-    def check_unique_id(self):
+    def check_unique_id(self, filters: OfferWorkFilter):
         query = f"""
                        SELECT 
                        unique_order_numner
                        FROM orders
-                       WHERE costumer_id ={self.costumer_id} and  executor_id = {self.executer_id} and package_id ={self.package_id}
+                       WHERE costumer_id = {filters.costumer_id} and 
+                       executor_id = {filters.executer_id} and package_id = {filters.package_id}
                         ;
                        """
         self.cursor.execute(query)
@@ -633,29 +640,27 @@ class OfferWork(DBAdapter):
         result = self.cursor.fetchone()
         return result
 
-    def star_work(self):
+    def star_work(self, filters: OfferWorkFilter):
 
-
-        gen_unique_number = f"{self.package_id}{datetime.now().time().minute}{datetime.now().time().second}"
+        gen_unique_number = f"{filters.package_id}{datetime.now().time().minute}{datetime.now().time().second}"
         order_start_date = datetime.now()
         query_orders = f"""
         INSERT INTO orders ( costumer_id, executor_id, order_start_date, package_id, order_chat_id, status, unique_order_numner)
-        VALUES ('{self.costumer_id}', '{self.executer_id}','{order_start_date}','{self.package_id}', '{self.order_chat_id}', 'in progress', '{gen_unique_number}');
+        VALUES ('{filters.costumer_id}', '{filters.executer_id}','{order_start_date}','{filters.package_id}', 
+        '{filters.order_chat_id}', 'in progress', '{gen_unique_number}');
         """
-        self.cursor.execute(query_orders )
+        self.cursor.execute(query_orders)
         self.connection.commit()
 
-        query_packages =f"""
+        query_packages = f"""
                 UPDATE packages 
                 SET status = 'in progress'
-                WHERE package_id = {self.package_id};
+                WHERE package_id = {filters.package_id};
                 """
         self.cursor.execute(query_packages)
         self.connection.commit()
 
-
-
-    def end_work(self, unique_order_number):
+    def end_work(self, unique_order_number, filters: OfferWorkFilter):
         try:
             order_stop_date = datetime.now()
             query = f"""
@@ -669,7 +674,7 @@ class OfferWork(DBAdapter):
             query_packages = f"""
                             UPDATE packages 
                             SET status = 'done'
-                            WHERE package_id = {self.package_id};
+                            WHERE package_id = {filters.package_id};
                             """
             self.cursor.execute(query_packages)
             self.connection.commit()
@@ -678,7 +683,7 @@ class OfferWork(DBAdapter):
 
 
 class ChatBot:
-    def __init__(self, token: str, db_adapter: DBAdapter):
+    def __init__(self, token: str, bd_password, bd_host, bd_port, db_user: str):
         self.updater = Updater(token=token)
         message_handler = MessageHandler(Filters.text | Filters.contact & (~ Filters.command), self.message_handler)
         # message_handler = MessageHandler(Filters.all, self.message_handler)
@@ -690,31 +695,51 @@ class ChatBot:
         # self.offers = db_adapter.get_offers(
         # start_command_handler = CommandHandler('start', self.command_start)
 
+        self.offers = ShowOffers(
+            db_user, bd_password, bd_host, bd_port, 'ChatBot_p2_delivery'
+        )
+        self.db_adapter = DBAdapter(
+            db_user, bd_password, bd_host, bd_port, 'ChatBot_p2_delivery'
+        )
+        self.give_data = GiveOffer(
+            db_user, bd_password, bd_host, bd_port, 'ChatBot_p2_delivery'
+        )
+        self.offers_in_work = OffersInWork(
+            db_user, bd_password, bd_host, bd_port, 'ChatBot_p2_delivery'
+        )
+
     def start(self):
         self.updater.start_polling()
+
+    def close(self):
+        for connector in [self.offers, self.db_adapter, self.give_data, self.offers_in_work]:
+            try:
+                connector.close()
+            except psycopg2.Error as ex:
+                LOG.error("Failed to close db connector %s: %s", connector, ex)
 
     def message_handler(self, update: Update, context: CallbackContext):
         chat_id = update.effective_chat.id
         user_id = update.effective_user.id
-        chat = db_adapter.get_chat(chat_id)
-        user = db_adapter.get_user(user_id)
+        chat = self.db_adapter.get_chat(chat_id)
+        user = self.db_adapter.get_user(user_id)
 
         if user is None:
-            db_adapter.create_user(
+            self.db_adapter.create_user(
                 first_name=update.effective_user.first_name,
                 user_id=update.effective_user.id
             )
 
         if chat is None:
-            db_adapter.create_chat(chat_id, user_id)
+            self.db_adapter.create_chat(chat_id, user_id)
 
         self.command_start(update)
-        chat_status = db_adapter.get_chat_status(chat_id)
+        chat_status = self.db_adapter.get_chat_status(chat_id)
         LOG.debug(f"chat_status = {chat_status}")
 
         if chat_status == ChatStatus.ASK_USER_NAME:
             update.message.reply_text('Как тебя зовут?')
-            db_adapter.update_chat_status(
+            self.db_adapter.update_chat_status(
                 new_status=ChatStatus.ASK_USER_PHONE.value,
                 user_id=update.effective_user.id,
                 chat_id=update.effective_chat.id
@@ -727,10 +752,9 @@ class ChatBot:
         elif chat_status == 3:
             self.ask_phone_number(update, context)
             if update.message.contact.phone_number:
-
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"что хочешь сделать?", reply_markup=self.main_menu_keyboard(update))
-                db_adapter.update_chat_status(5, update.effective_user.id, update.effective_chat.id)
+                self.db_adapter.update_chat_status(5, update.effective_user.id, update.effective_chat.id)
 
         elif chat_status == 4:  # status of main menu. Show main menu to user
             self.main_menu_keyboard(update)
@@ -739,98 +763,94 @@ class ChatBot:
             if update.message.text == UserActionRequest.TAKE_ORDER.value:
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"{'С какого города поедешь?'}", reply_markup=ReplyKeyboardRemove())
-                db_adapter.update_chat_status(6, update.effective_user.id, update.effective_chat.id)
-
+                self.db_adapter.update_chat_status(6, update.effective_user.id, update.effective_chat.id)
 
             elif update.message.text == UserActionRequest.GIVE_OFFER.value:
                 context.bot.send_message(chat_id=update.effective_chat.id,
-                                         text=f"{'В каком городе нужно забрать посылку? '}", reply_markup=ReplyKeyboardRemove())
-                db_adapter.update_chat_status(12, update.effective_user.id, update.effective_chat.id)
+                                         text=f"{'В каком городе нужно забрать посылку? '}",
+                                         reply_markup=ReplyKeyboardRemove())
+                self.db_adapter.update_chat_status(12, update.effective_user.id, update.effective_chat.id)
             elif update.message.text == UserActionRequest.GIVE_RUTE.value:
                 pass
         elif chat_status == 6:
-            db_adapter.update_filter('departure_city', update.message.text, update.effective_user.id)
+            self.db_adapter.update_filter('departure_city', update.message.text, update.effective_user.id)
             context.bot.send_message(chat_id=update.effective_chat.id,
                                      text=f"{'В какой город поедешь? '}")
-            db_adapter.update_chat_status(7, update.effective_user.id, update.effective_chat.id)
+            self.db_adapter.update_chat_status(7, update.effective_user.id, update.effective_chat.id)
         elif chat_status == 7:
-            db_adapter.update_filter('destination_city', update.message.text, update.effective_user.id)
-            filter_param = db_adapter.get_filter(update.effective_user.id)
+            self.db_adapter.update_filter('destination_city', update.message.text, update.effective_user.id)
+            filter_param = self.db_adapter.get_filter(update.effective_user.id)
 
             context.bot.send_message(chat_id=update.effective_chat.id,
                                      text=f"'Показать все заказы из города: {filter_param['departure_city']} "
                                           f"которые нужно доставить в город {filter_param['destination_city']}\n все верно ?",
                                      reply_markup=self.keyboard_boolean(update))
 
-            db_adapter.update_chat_status(8, update.effective_user.id, update.effective_chat.id)
+            self.db_adapter.update_chat_status(8, update.effective_user.id, update.effective_chat.id)
         elif chat_status == 8:
             if update.message.text == "Да":
-                filters_params = db_adapter.get_filter(update.effective_user.id)
-                offers = ShowOffers('postgres', bd_password, bd_host, bd_port,
-                                    'ChatBot_p2_delivery', departure_city=filters_params['departure_city'],
-                                    destination_country=filters_params['destination_city'])
-                first_row = offers.get_one_row()
-                row_dict = offers.query_to_dict(first_row)
+                filters_params = self.db_adapter.get_filter(update.effective_user.id)
+                filters = OfferFilter(
+                    departure_city=filters_params['departure_city'],
+                    destination_country=filters_params['destination_city']
+                )
+                first_row = self.offers.get_one_row(filters=filters)
+                row_dict = self.offers.query_to_dict(first_row)
 
-                if first_row != None:
+                if first_row is not None:
                     context.bot.send_message(chat_id=update.effective_chat.id,
                                              text=f"Держи заказы",
                                              reply_markup=self.next_previous_menu())
                     context.bot.send_message(chat_id=update.effective_chat.id,
                                              text=f"{self.data_from_dict_to_text(row_dict)}",
                                              reply_markup=self.inline_menu_take_order())
-                    offers.previous_shown_offer(update.effective_user.id, row_dict['package_id'])
-                    db_adapter.update_chat_status(9, update.effective_user.id, update.effective_chat.id)
+                    self.offers.previous_shown_offer(update.effective_user.id, row_dict['package_id'])
+                    self.db_adapter.update_chat_status(9, update.effective_user.id, update.effective_chat.id)
                 else:
                     context.bot.send_message(chat_id=update.effective_chat.id,
-
                                              text=f"Нет заказов", reply_markup=self.take_order_chose_change_menu())
-                    db_adapter.update_chat_status(11, update.effective_user.id, update.effective_chat.id)
-
-
-
-        elif chat_status == 9:
-            filters_params = db_adapter.get_filter(update.effective_user.id)
-            offers = ShowOffers('postgres', bd_password, bd_host, bd_port, 'ChatBot_p2_delivery',
-                                departure_city=filters_params['departure_city'],
-                                destination_country=filters_params['destination_city'])
-
+                    self.db_adapter.update_chat_status(11, update.effective_user.id, update.effective_chat.id)
+        elif chat_status == ChatStatus.SHOW_OFFER:
+            filters_params = self.db_adapter.get_filter(update.effective_user.id)
+            filters = OfferFilter(
+                departure_city=filters_params['departure_city'],
+                destination_country=filters_params['destination_city']
+            )
             if update.message.text == UserOffersActionsRequests.NEXT_OFFER.value:
-                package_id = offers.get_previous_row_id(update.effective_user.id)
-                first_row = offers.get_one_row()
-                next_offer = offers.get_next_row(package_id)
+                package_id = self.offers.get_previous_row_id(update.effective_user.id)
+                first_row = self.offers.get_one_row(filters=filters)
+                next_offer = self.offers.get_next_row(package_id, filters=filters)
 
-                if next_offer != None:
-                    next_offer_dict = offers.query_to_dict(next_offer)
+                if next_offer is not None:
+                    next_offer_dict = self.offers.query_to_dict(next_offer)
                     package_id = next_offer_dict['package_id']
-                    offers.previous_shown_offer(update.effective_user.id, package_id)
+                    self.offers.previous_shown_offer(update.effective_user.id, package_id)
                     text = self.data_from_dict_to_text(next_offer_dict)
                     context.bot.send_message(chat_id=update.effective_chat.id,
                                              text=f"{text}",
                                              reply_markup=self.inline_menu_take_order())
                 else:
-                    row_dict = offers.query_to_dict(first_row)
-                    offers.previous_shown_offer(update.effective_user.id, row_dict['package_id'])
+                    row_dict = self.offers.query_to_dict(first_row)
+                    self.offers.previous_shown_offer(update.effective_user.id, row_dict['package_id'])
                     context.bot.send_message(chat_id=update.effective_chat.id,
-                                             text=f"Ты посомотрел все новые заказы. сейчас будут по второму кругу")
+                                             text=f"Ты посмотрел все новые заказы. сейчас будут по второму кругу")
 
             elif update.message.text == UserOffersActionsRequests.SHOW_MY_OFFERS.value:
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"Что ты хочешь посмотреть", reply_markup=self.my_work())
-                db_adapter.update_chat_status(10, update.effective_user.id, update.effective_chat.id)
+                self.db_adapter.update_chat_status(10, update.effective_user.id, update.effective_chat.id)
 
             elif update.message.text == UserOffersActionsRequests.BACK_TO_MAIN_MENU.value:
-                db_adapter.update_chat_status(5, update.effective_user.id, update.effective_chat.id)
+                self.db_adapter.update_chat_status(5, update.effective_user.id, update.effective_chat.id)
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"Что ты хочешь сделать'",
                                          reply_markup=self.main_menu_keyboard(update))
 
         elif chat_status == 10:
-
             if update.message.text == UserOffersActionsRequests.OFFER_IN_PROGRESS.value:
-                if db_adapter.get_my_offers(update.effective_user.id):
-                    for i in db_adapter.get_my_offers(update.effective_user.id):
-                        data_dict = db_adapter.query_to_dict_orders(i)
+                if self.db_adapter.get_my_offers(update.effective_user.id):
+                    for offer in self.db_adapter.get_my_offers(update.effective_user.id):
+                        data_dict = self.db_adapter.query_to_dict_orders(offer)
                         text = self.data_from_dict_to_text_orders(data_dict)
                         context.bot.send_message(chat_id=update.effective_chat.id,
                                                  text=f"{text}", reply_markup=self.inline_menu_close_order())
@@ -839,20 +859,21 @@ class ChatBot:
                                              text=f"Нету заказов в работе")
 
             elif update.message.text == UserOffersActionsRequests.DONE_OFFERS.value:
-                offers = db_adapter.get_finished_offers()
-                for i in offers:
-                    query_dict = db_adapter.query_to_dict_finishd_orders(i)
+                finished_offers = self.db_adapter.get_finished_offers()
+                for offer in finished_offers:
+                    query_dict = self.db_adapter.query_to_dict_finishd_orders(offer)
                     text = self.data_from_dict_to_text_finished_orders(query_dict)
                     context.bot.send_message(chat_id=update.effective_chat.id,
                                              text=f"{text}")
             elif update.message.text == UserOffersActionsRequests.BACK_TO_NEW_OFFERS.value:
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"Жми кнопку 'Следующий закз "
-                                              f"чтобы посмотреть новые заказы если они есть '", reply_markup= self.next_previous_menu())
-                db_adapter.update_chat_status(9, update.effective_user.id, update.effective_chat.id)
+                                              f"чтобы посмотреть новые заказы если они есть '",
+                                         reply_markup=self.next_previous_menu())
+                self.db_adapter.update_chat_status(9, update.effective_user.id, update.effective_chat.id)
 
             elif update.message.text == UserOffersActionsRequests.BACK_TO_MAIN_MENU.value:
-                db_adapter.update_chat_status(5, update.effective_user.id, update.effective_chat.id)
+                self.db_adapter.update_chat_status(5, update.effective_user.id, update.effective_chat.id)
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"Что ты хочешь сделать'",
                                          reply_markup=self.main_menu_keyboard(update))
@@ -862,76 +883,70 @@ class ChatBot:
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"Что ты хочешь сделать'",
                                          reply_markup=self.main_menu_keyboard(update))
-                db_adapter.update_chat_status(5, update.effective_user.id, update.effective_chat.id)
-
+                self.db_adapter.update_chat_status(5, update.effective_user.id, update.effective_chat.id)
 
             elif update.message.text == UserActionRequest.CHANGE_DEPARTUE_CITY.value:
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"{'С какого города поедешь?'}",
                                          reply_markup=ReplyKeyboardRemove())
-                db_adapter.update_chat_status(6, update.effective_user.id, update.effective_chat.id)
+                self.db_adapter.update_chat_status(6, update.effective_user.id, update.effective_chat.id)
 
             elif update.message.text == UserActionRequest.CHANGE_DESTANATION_CITY.value:
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"В какой город поедешь?''",
                                          reply_markup=ReplyKeyboardRemove())
-                db_adapter.update_chat_status(7, update.effective_user.id, update.effective_chat.id)
-
+                self.db_adapter.update_chat_status(7, update.effective_user.id, update.effective_chat.id)
 
             elif chat_status == 12:
                 pass
-    @classmethod
-    def command_start(cls, update: Update):
+
+    def command_start(self, update: Update):
         if update.message.text == '/start':
             update.message.reply_text(
-                'Привет, меня зовут бот. Я соеденяю людей и товары по всему миру.\n Давай с тобой познакомимся')
-            db_adapter.update_chat_status(1, update.effective_user.id, update.effective_chat.id)
+                'Привет, меня зовут бот. Я соединяю людей и товары по всему миру.\n Давай с тобой познакомимся')
+            self.db_adapter.update_chat_status(1, update.effective_user.id, update.effective_chat.id)
         else:
             pass
 
     def callback_handler(self, update: Update, context: CallbackContext):
         query = update.callback_query
         answer = query.data
-        filters_params = db_adapter.get_filter(update.effective_user.id)
-        offers = ShowOffers('postgres', bd_password, bd_host, bd_port, 'ChatBot_p2_delivery',
-                            departure_city=filters_params['departure_city'],
-                            destination_country=filters_params['destination_city'])
+        filters_params = self.db_adapter.get_filter(update.effective_user.id)
+        filters = OfferFilter(
+            departure_city=filters_params['departure_city'],
+            destination_country=filters_params['destination_city']
+        )
+        package_id = self.offers.get_previous_row_id(update.effective_user.id)
+        offer_user_id = self.offers.get_user_id_by_package(package_id)
+        user = self.db_adapter.get_user(offer_user_id)
 
-        package_id = offers.get_previous_row_id(update.effective_user.id)
-        offer_user_id = offers.get_user_id_by_package(package_id)
-        user = db_adapter.get_user(offer_user_id)
-        offer_work = OfferWork('postgres', bd_password, bd_host, bd_port, 'ChatBot_p2_delivery',
-                               costumer_id=offer_user_id,
-                               executer_id=update.effective_user.id,
-                               package_id=package_id,
-                               chat_id=update.effective_chat.id)
+        filters = OfferWorkFilter(
+           costumer_id=offer_user_id,
+           executer_id=update.effective_user.id,
+           package_id=package_id,
+           order_chat_id=update.effective_chat.id
+        )
 
         if answer == UserOffersActionsRequests.TAKE_OFFER.value:
             query.answer()
             name = user[1]
             phone = user[4]
-            check_tuple = (update.effective_user.id, offer_user_id,package_id)
+            check_tuple = (update.effective_user.id, offer_user_id, package_id)
 
-            if offer_work.check_working() != check_tuple:
+            if self.offers_in_work.check_working(filters=filters) != check_tuple:
 
-                context.bot.send_contact(update.effective_chat.id, phone, name, reply_markup=self.inline_menu_close_order())
-                offer_work.star_work()
+                context.bot.send_contact(update.effective_chat.id, phone, name,
+                                         reply_markup=self.inline_menu_close_order())
+                self.offers_in_work.star_work(filters=filters)
             else:
                 pass
         elif answer == UserOffersActionsRequests.CLOSE_OFFER.value:
             query.answer()
             text = query.message.text
             uique_id = self.serch_unique_id(text)
-            offer_work.end_work(uique_id)
+            self.offers_in_work.end_work(uique_id, filters=filters)
             context.bot.send_message(chat_id=update.effective_chat.id,
                                      text=f"Закрыт")
-
-
-
-
-
-
-
 
     def validate_name(self, update, context):
         name = update.message.text
@@ -939,12 +954,12 @@ class ChatBot:
             context.bot.send_message(chat_id=update.effective_chat.id,
                                      text="Ты думаешь это смешно?")
             self.keyboard_boolean(update)
-            db_adapter.update_chat_status(1, update.effective_user.id, update.effective_chat.id)
+            self.db_adapter.update_chat_status(1, update.effective_user.id, update.effective_chat.id)
         else:
             context.bot.send_message(chat_id=update.effective_chat.id,
                                      text=f"Очень приятно познакомиться {update.message.text}")
-            db_adapter.update_user_name(name, update.effective_user.id)
-            db_adapter.update_chat_status(3, update.effective_user.id, update.effective_chat.id)
+            self.db_adapter.update_user_name(name, update.effective_user.id)
+            self.db_adapter.update_chat_status(3, update.effective_user.id, update.effective_chat.id)
 
     def serch_unique_id(self, text):
         reg_template_text = 'Уникальный ID заказа:(\s+\d+|\d+)'
@@ -953,12 +968,8 @@ class ChatBot:
         result_2 = re.findall(reg_template_digit, str(result_1[0]))[0]
         return int(result_2)
 
-
-
-
-    @classmethod
-    def ask_phone_number(cls, update, context):
-        db_adapter.update_phone_number(update.message.contact.phone_number, update.effective_user.id)
+    def ask_phone_number(self, update, context):
+        self.db_adapter.update_phone_number(update.message.contact.phone_number, update.effective_user.id)
         context.bot.send_message(chat_id=update.effective_chat.id,
                                  text="Записал", reply_markup=ReplyKeyboardRemove())
 
@@ -1003,7 +1014,6 @@ class ChatBot:
         """
         return text
 
-
     @classmethod
     def data_from_dict_to_text_finished_orders(cls, data):
         text = f"""                              
@@ -1022,8 +1032,6 @@ class ChatBot:
         """
         return text
 
-
-
     @classmethod
     def keyboard_boolean(cls, update):
         keyboard = [['Да', 'Нет']]
@@ -1041,7 +1049,7 @@ class ChatBot:
         take_order = KeyboardButton(UserActionRequest.TAKE_ORDER.value)
         give_offer = KeyboardButton(UserActionRequest.GIVE_OFFER.value)
         # give_rute = KeyboardButton(UserActionRequest.GIVE_RUTE.value)
-        menu_list = [[give_offer,take_order]]
+        menu_list = [[give_offer, take_order]]
         markup_main_menu = ReplyKeyboardMarkup(menu_list, resize_keyboard=True)
         return markup_main_menu
 
@@ -1071,7 +1079,7 @@ class ChatBot:
         done_offers = KeyboardButton(UserOffersActionsRequests.DONE_OFFERS.value)
         back_to_new_offers = KeyboardButton(UserOffersActionsRequests.BACK_TO_NEW_OFFERS.value)
         back_to_main_menu = KeyboardButton(UserOffersActionsRequests.BACK_TO_MAIN_MENU.value)
-        menu_list = [[offer_in_progress, done_offers],[back_to_new_offers, back_to_main_menu]]
+        menu_list = [[offer_in_progress, done_offers], [back_to_new_offers, back_to_main_menu]]
         markup_main_menu = ReplyKeyboardMarkup(menu_list, resize_keyboard=True)
         return markup_main_menu
 
@@ -1088,16 +1096,18 @@ class ChatBot:
     @classmethod
     def inline_menu_close_order(cls):
         close_offer = InlineKeyboardButton(UserOffersActionsRequests.CLOSE_OFFER.value,
-                                          callback_data=UserOffersActionsRequests.CLOSE_OFFER.value)
+                                           callback_data=UserOffersActionsRequests.CLOSE_OFFER.value)
         buttons_list = [[close_offer]]
         markup_inline_close_menu = InlineKeyboardMarkup(buttons_list)
         return markup_inline_close_menu
 
 
-
 if __name__ == "__main__":
-    db_adapter = DBAdapter('postgres', bd_password, bd_host, bd_port, 'ChatBot_p2_delivery')
-    give_data = GiveOffer('postgres', bd_password, bd_host, bd_port, 'ChatBot_p2_delivery')
-
-    bot = ChatBot(token=TOKEN, db_adapter=db_adapter)
-    bot.start()
+    db_user = "postgres"
+    bot = ChatBot(
+        token=TOKEN, bd_password=bd_password, bd_host=bd_host, bd_port=bd_port, db_user=db_user
+    )
+    try:
+        bot.start()
+    finally:
+        bot.close()
