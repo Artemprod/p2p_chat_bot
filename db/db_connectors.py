@@ -647,14 +647,27 @@ class OffersInWork(DBAdapter):
 
 
 class DBOffersManager:
+
+    @classmethod
+    def create_database(cls, user, password, host, port, database):
+        engine = create_engine(url=f"postgresql://{user}:{password}@{host}:{port}")
+        with Session(engine) as session:
+            session.execute(f"create database '{database}' if not exists;")
+
     def __init__(self, user, password, host, port, database):
-        self.engine = create_engine(url=f"postgresql://{user}:{password}@${host}:{port}/${database}")
+#        self.create_database(user, password, host, port, database)
+        self.engine = create_engine(url=f"postgresql://{user}:{password}@{host}:{port}/{database.lower()}")
         SQLModel.metadata.create_all(self.engine)
+
+    def close(self):
+        pass
 
     def add_offer(self, offer: OfferInDB):
         with Session(self.engine) as session:
             session.add(offer)
             session.commit()
+            session.refresh(offer)
+            return offer
 
     def find_one_offer(self, filters: OfferFilter) -> OfferInDB:
         params = [
