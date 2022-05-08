@@ -91,6 +91,7 @@ ALTER TABLE IF EXISTS public.users
     OWNER to postgres;
 """
 
+# TODO: chat_id + user_id -> Unique
 user_chat_create = """
 -- Table: public.user_chat
 
@@ -110,6 +111,7 @@ ALTER TABLE IF EXISTS public.user_chat
     OWNER to postgres;
 """
 
+# TODO: package_id + user_id -> Unique
 shown_offers_create = """
 -- Table: public.shown_offers
 
@@ -160,6 +162,9 @@ COMMENT ON TABLE public.packages
     IS 'all created packages from all users ';
 """
 
+# TODO: costumer_id + executor_id + package_id -> unique
+# TODO: order_id -> unique
+# TODO: исправить опечатки в названия колонок и потом в коде соответственно
 orders_create = """
 -- Table: public.orders
 

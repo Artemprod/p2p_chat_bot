@@ -148,17 +148,21 @@ class ChatBot:
     def message_handler(self, update: Update, context: CallbackContext):
         chat_id = update.effective_chat.id
         user_id = update.effective_user.id
-        chat = self.db_adapter.get_chat(chat_id)
-        user = self.db_adapter.get_user(user_id)
 
+        user = self.db_adapter.get_user(user_id)
         if user is None:
             self.db_adapter.create_user(
                 first_name=update.effective_user.first_name,
                 user_id=update.effective_user.id
             )
+            user = self.db_adapter.get_user(user_id)
+            LOG.debug(f"Created new user: {user}")
 
+        chat = self.db_adapter.get_chat(chat_id)
         if chat is None:
             self.db_adapter.create_chat(chat_id, user_id)
+            chat = self.db_adapter.get_chat(chat_id)
+            LOG.debug(f"Created new chat: {chat}")
 
         self.command_start(update)
         chat_status = self.db_adapter.get_chat_status(chat_id)
@@ -309,7 +313,8 @@ class ChatBot:
             city = update.message.text
             self.give_data.write_destination_city(city, update.effective_user.id)
             context.bot.send_message(chat_id=update.effective_chat.id,
-                                     text=f"'Когда хочешь отправить посылку?", reply_markup=self.chose_date_keyboard())
+                                     text=f"Когда хочешь отправить посылку?",
+                                     reply_markup=self.chose_date_keyboard())
 
             self.db_adapter.update_chat_status(ChatStatus.DATA_OF_DEPARTURE.value, update.effective_user.id,
                                                update.effective_chat.id)
@@ -405,9 +410,10 @@ class ChatBot:
         elif chat_status == ChatStatus.DESCRIPTION.value:
             description = update.message.text
             self.give_data.write_description(description, update.effective_user.id)
-            context.bot.send_message(chat_id=update.effective_chat.id,
-                                     text='отлично, давай проверим, правильно ли я все записал'
-                                     )
+            context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text='Отлично, давай проверим, правильно ли я все записал?'
+            )
             text = self.give_data.show_writen_data_to_user()
             context.bot.send_message(chat_id=update.effective_chat.id,
                                      text=f"{text}",
@@ -431,7 +437,11 @@ class ChatBot:
         if update.message.text == '/start':
             update.message.reply_text(
                 'Привет, меня зовут бот. Я соединяю людей и товары по всему миру.\n Давай с тобой познакомимся')
-            self.db_adapter.update_chat_status(1, update.effective_user.id, update.effective_chat.id)
+            self.db_adapter.update_chat_status(
+                ChatStatus.ASK_USER_NAME.value,
+                update.effective_user.id,
+                update.effective_chat.id
+            )
         else:
             pass
 
@@ -508,10 +518,21 @@ class ChatBot:
         result_2 = re.findall(reg_template_digit, str(result_1[0]))[0]
         return int(result_2)
 
-    def ask_phone_number(self, update, context):
-        self.db_adapter.update_phone_number(update.message.contact.phone_number, update.effective_user.id)
-        context.bot.send_message(chat_id=update.effective_chat.id,
-                                 text="Записал", reply_markup=ReplyKeyboardRemove())
+    def ask_phone_number(self, update: Update, context):
+        try:
+            phone_number = update.message.contact.phone_number
+        except AttributeError as ex:
+            # TODO: валидировать текст номера телефона
+            phone_number = update.message.text
+
+        self.db_adapter.update_phone_number(
+            phone_number=phone_number,
+            user_id=update.effective_user.id
+        )
+        context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Записал", reply_markup=ReplyKeyboardRemove()
+        )
 
     def validate_price(self, text):
         template_digit = '\d+'

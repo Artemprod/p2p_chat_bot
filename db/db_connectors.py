@@ -30,7 +30,7 @@ class DBAdapter:  # responsible for Users and Chats
                 database=database
             )
             self.cursor = self.connection.cursor()
-            LOG.debug(f"Соединение с базой установлено {database=}, {host=}, {port=}")
+            LOG.debug(f"[{type(self).__name__}] Соединение с базой установлено {database=}, {host=}, {port=}")
         except(Exception, Error) as ex:
             LOG.error(f"Ошибка работы с базой  {database=}, {host=}, {port=}: %s", ex)
             raise ex
@@ -53,14 +53,12 @@ class DBAdapter:  # responsible for Users and Chats
     def fetch_one(self, query):
         with closing(self.connection.cursor()) as cursor:
             cursor.execute(query)
-            self.connection.commit()
-            return self.cursor.fetchone()
+            return cursor.fetchone()
 
     def fetchall(self, query):
         with closing(self.connection.cursor()) as cursor:
             cursor.execute(query)
-            self.connection.commit()
-            return self.cursor.fetchall()
+            return cursor.fetchall()
 
     def close(self):
         self.connection.close()
@@ -79,7 +77,7 @@ class DBAdapter:  # responsible for Users and Chats
             VALUES ('{first_name}',' {last_name}','{nick_name}','{email}', '{phone_number}','{user_id}')
             """
             self.execute(create_user_query)
-            LOG.debug("Пользователь добавлен в базу")
+            LOG.debug(f"Пользователь {user_id} добавлен в базу")
         except(Exception, Error) as e:
             LOG.error("Ошибка работы с базой:", e)
 
@@ -177,7 +175,7 @@ class DBAdapter:  # responsible for Users and Chats
         except(Exception, Error) as e:
             LOG.error("Ошибка при обновлении статуса :", e)
 
-    def get_chat(self, chat_id) -> dict:
+    def get_chat(self, chat_id: int) -> dict:
         try:
             select_query = f"""
             SELECT * 
@@ -185,6 +183,7 @@ class DBAdapter:  # responsible for Users and Chats
             WHERE chat_id = {chat_id} 
             """
             result = self.fetch_one(select_query)
+            LOG.debug(f"Найден чат {chat_id}: {result}")
             return result
         except(Exception, Error) as e:
             LOG.error("Ошибка при получении данных о чате:", e)
@@ -192,15 +191,14 @@ class DBAdapter:  # responsible for Users and Chats
     def get_chat_status(self, chat_id):
         try:
             select_query = f"""
-            SELECT 
-            "ChatStatus"
+            SELECT "ChatStatus"
             FROM user_chat
             WHERE chat_id = {chat_id} 
             """
             result = self.fetch_one(select_query)[0]
             return result
         except(Exception, Error) as e:
-            LOG.error("Ошибка при получении статуса чата:", e)
+            LOG.error(f"Ошибка при получении статуса чата {chat_id=}:", e)
 
     def insert_one(self, table, column1, column2, value1, value2):
         try:
@@ -549,8 +547,7 @@ class GiveOffer(DBAdapter):
             Сколько готов заплатить: {data['price']} рублей        
             Описание: {data['description']}          
             Когда когда нужно забрать  {data['despatch_date']}
-            
-                """
+            """
         return text
 
 
