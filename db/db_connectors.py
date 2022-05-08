@@ -4,17 +4,17 @@ All logic for database
 
 import datetime as date
 import logging
+from contextlib import closing
 from datetime import datetime
 from typing import Optional
 
 import psycopg2
 from psycopg2 import Error
 from psycopg2._psycopg import connection
+from psycopg2.extensions import cursor as PgCursor
 from pydantic import BaseModel
-from sqlalchemy import and_
-from sqlmodel import Session, SQLModel, create_engine, select
 
-from db.tables import OfferInDB
+from db.tables import CREATE_SCRIPTS
 
 LOG = logging.getLogger(__name__)
 
@@ -34,6 +34,16 @@ class DBAdapter:  # responsible for Users and Chats
         except(Exception, Error) as ex:
             LOG.error(f"Ошибка работы с базой  {database=}, {host=}, {port=}: %s", ex)
             raise ex
+        else:
+            self.create_tables(conn=self.connection)
+
+    @classmethod
+    def create_tables(cls, conn: "connection"):
+        for script in CREATE_SCRIPTS:
+            with closing(conn.cursor()) as cursor:
+                cursor: "PgCursor" = cursor
+                cursor.execute(script)
+                conn.commit()
 
     def close(self):
         self.connection.close()

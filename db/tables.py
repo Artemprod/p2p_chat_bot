@@ -46,3 +46,148 @@ class Offers(SQLModel, table=True):
 
 
 OfferInDB = Offers
+
+offers_filter_create = """
+-- Table: public.offers_filtr
+
+-- DROP TABLE IF EXISTS public.offers_filtr;
+
+CREATE TABLE IF NOT EXISTS public.offers_filtr
+(
+    user_id integer NOT NULL,
+    departure_country character varying COLLATE pg_catalog."default",
+    departure_city character varying COLLATE pg_catalog."default",
+    destination_country character varying COLLATE pg_catalog."default",
+    destination_city character varying COLLATE pg_catalog."default",
+    price numeric
+)
+
+TABLESPACE pg_default;
+
+ALTER TABLE IF EXISTS public.offers_filtr
+    OWNER to postgres;
+"""
+
+users_create = """
+-- Table: public.users
+
+-- DROP TABLE IF EXISTS public.users;
+
+CREATE TABLE IF NOT EXISTS public.users
+(
+    id integer NOT NULL GENERATED ALWAYS AS IDENTITY ( INCREMENT 1 START 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1 ),
+    "UserName" character varying(100) COLLATE pg_catalog."default" NOT NULL,
+    "UserNickName" character varying(100) COLLATE pg_catalog."default" NOT NULL,
+    "Email" character varying(100) COLLATE pg_catalog."default",
+    "PhoneNumber" character varying(100) COLLATE pg_catalog."default",
+    "UserLastName" character varying(100) COLLATE pg_catalog."default",
+    user_id integer NOT NULL,
+    CONSTRAINT users_pkey PRIMARY KEY (id)
+)
+
+TABLESPACE pg_default;
+
+ALTER TABLE IF EXISTS public.users
+    OWNER to postgres;
+"""
+
+user_chat_create = """
+-- Table: public.user_chat
+
+-- DROP TABLE IF EXISTS public.user_chat;
+
+CREATE TABLE IF NOT EXISTS public.user_chat
+(
+    chat_id integer,
+    user_id integer,
+    "ChatStatus" integer,
+    "LastAnswer " text COLLATE pg_catalog."default"
+)
+
+TABLESPACE pg_default;
+
+ALTER TABLE IF EXISTS public.user_chat
+    OWNER to postgres;
+"""
+
+shown_offers_create = """
+-- Table: public.shown_offers
+
+-- DROP TABLE IF EXISTS public.shown_offers;
+
+CREATE TABLE IF NOT EXISTS public.shown_offers
+(
+    user_id integer,
+    package_id integer
+)
+
+TABLESPACE pg_default;
+
+ALTER TABLE IF EXISTS public.shown_offers
+    OWNER to postgres;
+"""
+
+packages_create = """
+-- Table: public.packages
+
+-- DROP TABLE IF EXISTS public.packages;
+
+CREATE TABLE IF NOT EXISTS public.packages
+(
+    package_id integer NOT NULL GENERATED ALWAYS AS IDENTITY ( INCREMENT 1 START 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1 ),
+    custumer_user_id integer NOT NULL,
+    type character varying(100) COLLATE pg_catalog."default",
+    created_date date,
+    departure_country character varying(255) COLLATE pg_catalog."default",
+    departure_city character varying(255) COLLATE pg_catalog."default",
+    destination_country character varying(255) COLLATE pg_catalog."default",
+    destination_city character varying(255) COLLATE pg_catalog."default",
+    price numeric,
+    description text COLLATE pg_catalog."default",
+    title character varying COLLATE pg_catalog."default",
+    status character varying COLLATE pg_catalog."default",
+    despatch_date date,
+    package_size character varying COLLATE pg_catalog."default",
+    CONSTRAINT packages_pkey PRIMARY KEY (package_id)
+)
+
+TABLESPACE pg_default;
+
+ALTER TABLE IF EXISTS public.packages
+    OWNER to postgres;
+
+COMMENT ON TABLE public.packages
+    IS 'all created packages from all users ';
+"""
+
+orders_create = """
+-- Table: public.orders
+
+-- DROP TABLE IF EXISTS public.orders;
+
+CREATE TABLE IF NOT EXISTS public.orders
+(
+    costumer_id integer NOT NULL,
+    executor_id integer NOT NULL,
+    order_start_date date,
+    order_finish_date date,
+    package_id integer NOT NULL,
+    order_chat_id integer,
+    unique_order_numner bigint,
+    status character varying COLLATE pg_catalog."default",
+    order_id integer NOT NULL GENERATED ALWAYS AS IDENTITY ( INCREMENT 1 START 1 MINVALUE 1 MAXVALUE 2147483647 CACHE 1 )
+)
+
+TABLESPACE pg_default;
+
+ALTER TABLE IF EXISTS public.orders
+    OWNER to postgres;
+
+COMMENT ON TABLE public.orders
+    IS 'table defines  work proces ';
+"""
+
+CREATE_SCRIPTS = (
+    offers_filter_create, users_create, user_chat_create,
+    shown_offers_create, packages_create, orders_create
+)
