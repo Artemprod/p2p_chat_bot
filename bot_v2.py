@@ -17,16 +17,19 @@ from logs import init_logging
 from secrets import SECRETS
 from telegramcalendar import calendar
 import datetime
+
 init_logging()
 
 LOG = logging.getLogger(__name__)
 
+
 class DataChose(str, Enum):
     TODAY = 'Сегодня'
-    TOMORROW ='Завтра'
-    NEXT_WEEK ='На следующей недели'
+    TOMORROW = 'Завтра'
+    NEXT_WEEK = 'На следующей недели'
     DAY_AFTER_TOMORROW = 'Послезавтра'
     SHOW_CALENDAR = 'Показать календарь'
+
 
 class UserOffersActionsRequests(str, Enum):
     NEXT_OFFER = 'Следующий новый заказ'
@@ -54,7 +57,7 @@ class ChatStatus(int, Enum):
     ASK_USER_PHONE = 2
     SHOW_OFFERS = 9
     TAKE_DEPARTURE_CITY = 12
-    TAKE_DISTANATION_CITY =13
+    TAKE_DISTANATION_CITY = 13
     DATA_OF_DEPARTURE = 14
     TITLE = 15
     DESCRIPTION = 16
@@ -194,7 +197,8 @@ class ChatBot:
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"{'В каком городе нужно забрать посылку? '}",
                                          reply_markup=ReplyKeyboardRemove())
-                self.db_adapter.update_chat_status(ChatStatus.TAKE_DEPARTURE_CITY.value, update.effective_user.id, update.effective_chat.id)
+                self.db_adapter.update_chat_status(ChatStatus.TAKE_DEPARTURE_CITY.value, update.effective_user.id,
+                                                   update.effective_chat.id)
             elif update.message.text == UserActionRequest.GIVE_RUTE.value:
                 pass
         elif chat_status == 6:
@@ -279,7 +283,7 @@ class ChatBot:
             if update.message.text == UserOffersActionsRequests.BACK_TO_MAIN_MENU.value:
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"Что ты хочешь сделать'",
-                                         reply_markup=self.main_menu_keyboard( ))
+                                         reply_markup=self.main_menu_keyboard())
                 self.db_adapter.update_chat_status(5, update.effective_user.id, update.effective_chat.id)
 
             elif update.message.text == UserActionRequest.CHANGE_DEPARTURE_CITY.value:
@@ -325,7 +329,7 @@ class ChatBot:
                                                    update.effective_chat.id)
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text='Что ты хочешь отправить?',
-                                         reply_markup = ReplyKeyboardRemove()
+                                         reply_markup=ReplyKeyboardRemove()
                                          )
 
 
@@ -363,10 +367,10 @@ class ChatBot:
                 next_week = today + datetime.timedelta(days=7)
                 self.give_data.write_dispatch_date(update.effective_user.id, next_week)
                 context.bot.send_message(chat_id=update.effective_chat.id,
-                                         text=f"Ты выбрал эту {next_week .strftime('%d/%m/%Y')} дату:"
+                                         text=f"Ты выбрал эту {next_week.strftime('%d/%m/%Y')} дату:"
                                          )
                 self.db_adapter.update_chat_status(ChatStatus.TITLE.value, update.effective_user.id,
-                                               update.effective_chat.id)
+                                                   update.effective_chat.id)
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text='Что ты хочешь отправить?',
                                          reply_markup=ReplyKeyboardRemove()
@@ -388,9 +392,9 @@ class ChatBot:
 
 
         elif chat_status == ChatStatus.PRICE.value:
-            price_text =update.message.text
+            price_text = update.message.text
             price = self.validate_price(price_text)
-            self.give_data.write_price(price=price,custumer_user_id=update.effective_user.id)
+            self.give_data.write_price(price=price, custumer_user_id=update.effective_user.id)
             self.db_adapter.update_chat_status(ChatStatus.DESCRIPTION.value, update.effective_user.id,
                                                update.effective_chat.id)
             context.bot.send_message(chat_id=update.effective_chat.id,
@@ -423,12 +427,6 @@ class ChatBot:
             elif replay == 'Нет':
                 pass
 
-
-
-
-
-
-
     def command_start(self, update: Update):
         if update.message.text == '/start':
             update.message.reply_text(
@@ -442,15 +440,14 @@ class ChatBot:
         if selected:
             self.give_data.write_dispatch_date(update.effective_user.id, date.strftime("%d/%m/%Y"))
             context.bot.send_message(chat_id=update.callback_query.from_user.id,
-                             text="Ты выбрал %s" % (date.strftime("%d/%m/%Y")),
-                             reply_markup=ReplyKeyboardRemove())
+                                     text="Ты выбрал %s" % (date.strftime("%d/%m/%Y")),
+                                     reply_markup=ReplyKeyboardRemove())
             self.db_adapter.update_chat_status(ChatStatus.TITLE.value, update.effective_user.id,
                                                update.effective_chat.id)
             context.bot.send_message(chat_id=update.effective_chat.id,
                                      text='Что ты хочешь отправить?',
                                      reply_markup=ReplyKeyboardRemove()
                                      )
-
 
         query = update.callback_query
         answer = query.data
@@ -464,10 +461,10 @@ class ChatBot:
         user = self.db_adapter.get_user(offer_user_id)
 
         filters = OfferWorkFilter(
-           costumer_id=offer_user_id,
-           executer_id=update.effective_user.id,
-           package_id=package_id,
-           order_chat_id=update.effective_chat.id
+            costumer_id=offer_user_id,
+            executer_id=update.effective_user.id,
+            package_id=package_id,
+            order_chat_id=update.effective_chat.id
         )
 
         if answer == UserOffersActionsRequests.TAKE_OFFER.value:
@@ -634,10 +631,10 @@ class ChatBot:
     def chose_date_keyboard(self):
         today = KeyboardButton(DataChose.TODAY.value)
         tomorrow = KeyboardButton(DataChose.TOMORROW.value)
-        day_after_tomorrow= KeyboardButton(DataChose.DAY_AFTER_TOMORROW.value)
+        day_after_tomorrow = KeyboardButton(DataChose.DAY_AFTER_TOMORROW.value)
         next_week = KeyboardButton(DataChose.NEXT_WEEK.value)
         show_menu = KeyboardButton(DataChose.SHOW_CALENDAR.value)
-        menu_list = [[today ,tomorrow],[day_after_tomorrow,next_week],[show_menu]]
+        menu_list = [[today, tomorrow], [day_after_tomorrow, next_week], [show_menu]]
         markup_chose_date_menu = ReplyKeyboardMarkup(menu_list, resize_keyboard=True)
         return markup_chose_date_menu
 

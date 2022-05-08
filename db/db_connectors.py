@@ -30,9 +30,10 @@ class DBAdapter:  # responsible for Users and Chats
                 database=database
             )
             self.cursor = self.connection.cursor()
-            LOG.debug("Соединение с базой установлено")
-        except(Exception, Error) as e:
-            LOG.error("Ошибка работы с базой:", e)
+            LOG.debug(f"Соединение с базой установлено {database=}, {host=}, {port=}")
+        except(Exception, Error) as ex:
+            LOG.error(f"Ошибка работы с базой  {database=}, {host=}, {port=}: %s", ex)
+            raise ex
 
     def close(self):
         self.connection.close()
