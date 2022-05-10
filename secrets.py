@@ -10,4 +10,4 @@ class Secrets(BaseSettings):
     database: str = Field(default="ChatBot_p2_delivery", env="DATABASE_NAME")
 
 
-SECRETS = Secrets(token = '5193936594:AAESI-SFziCVSzSnl7b7Zz3leB7swYNwL08', bd_password='Portnov1991')
+SECRETS = Secrets()

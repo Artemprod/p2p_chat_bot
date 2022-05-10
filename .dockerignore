@@ -5,3 +5,4 @@ secrets/
 sequence/
 tests/**/__pycache__
 api-redoc.html
+.env

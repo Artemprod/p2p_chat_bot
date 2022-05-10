@@ -4,17 +4,17 @@ All logic for database
 
 import datetime as date
 import logging
+from contextlib import closing
 from datetime import datetime
 from typing import Optional
 
 import psycopg2
 from psycopg2 import Error
 from psycopg2._psycopg import connection
+from psycopg2.extensions import cursor as PgCursor
 from pydantic import BaseModel
-from sqlalchemy import and_
-from sqlmodel import Session, SQLModel, create_engine, select
 
-from db.tables import OfferInDB
+from db.tables import CREATE_SCRIPTS
 
 LOG = logging.getLogger(__name__)
 
@@ -30,9 +30,36 @@ class DBAdapter:  # responsible for Users and Chats
                 database=database
             )
             self.cursor = self.connection.cursor()
-            LOG.debug("Соединение с базой установлено")
-        except(Exception, Error) as e:
-            LOG.error("Ошибка работы с базой:", e)
+            LOG.debug(f"[{type(self).__name__}] Соединение с базой установлено {database=}, {host=}, {port=}")
+        except(Exception, Error) as ex:
+            LOG.error(f"Ошибка работы с базой  {database=}, {host=}, {port=}: %s", ex)
+            raise ex
+        else:
+            self.create_tables(conn=self.connection)
+
+    @classmethod
+    def create_tables(cls, conn: "connection"):
+        for script in CREATE_SCRIPTS:
+            with closing(conn.cursor()) as cursor:
+                cursor: "PgCursor" = cursor
+                cursor.execute(script)
+                conn.commit()
+
+    def execute(self, query):
+        with closing(self.connection.cursor()) as cursor:
+            cursor.execute(query)
+            self.connection.commit()
+
+    def fetch_one(self, query):
+        with closing(self.connection.cursor()) as cursor:
+            cursor.execute(query)
+            self.connection.commit()
+            return cursor.fetchone()
+
+    def fetchall(self, query):
+        with closing(self.connection.cursor()) as cursor:
+            cursor.execute(query)
+            return cursor.fetchall()
 
     def close(self):
         self.connection.close()
@@ -50,10 +77,8 @@ class DBAdapter:  # responsible for Users and Chats
             INSERT INTO users ("UserName", "UserLastName", "UserNickName","Email", "PhoneNumber", user_id)
             VALUES ('{first_name}',' {last_name}','{nick_name}','{email}', '{phone_number}','{user_id}')
             """
-            self.cursor.execute(create_user_query)
-            self.connection.commit()
-            LOG.debug("Пользователь добавлен в базу")
-
+            self.execute(create_user_query)
+            LOG.debug(f"Пользователь {user_id} добавлен в базу")
         except(Exception, Error) as e:
             LOG.error("Ошибка работы с базой:", e)
 
@@ -63,8 +88,7 @@ class DBAdapter:  # responsible for Users and Chats
                 UPDATE users SET "PhoneNumber" = '{phone_number}'
                 WHERE user_id = {user_id};
                 """
-            self.cursor.execute(update_query)
-            self.connection.commit()
+            self.execute(update_query)
             LOG.debug(f"Телефон пользователя изменен на {phone_number}")
         except(Exception, Error) as e:
             LOG.error("Ошибка при обновление телефонного номера:", e)
@@ -79,8 +103,8 @@ class DBAdapter:  # responsible for Users and Chats
             FROM users
             WHERE user_id={user_id} 
             """
-            self.cursor.execute(select_query)
-            result = self.cursor.fetchone()
+
+            result = self.fetch_one(select_query)
             return result
         except(Exception, Error) as e:
             LOG.error("Ошибка при получение данных пользователя:", e)
@@ -91,8 +115,7 @@ class DBAdapter:  # responsible for Users and Chats
                 UPDATE users SET "UserName" = '{name}'
                 WHERE user_id = {user_id};
                 """
-            self.cursor.execute(update_query)
-            self.connection.commit()
+            self.execute(update_query)
             LOG.debug(f"Имя пользователя изменено на {name}")
         except(Exception, Error) as e:
             LOG.error("Ошибка при обновлении имени:", e)
@@ -103,8 +126,7 @@ class DBAdapter:  # responsible for Users and Chats
             INSERT INTO user_chat (chat_id, user_id)
             VALUES ({chat_id},{user_id});
             """
-            self.cursor.execute(create_chat_query)
-            self.connection.commit()
+            self.execute(create_chat_query)
             LOG.debug(f"новый чат № {chat_id}  для пользователя {user_id} создан")
         except(Exception, Error) as e:
             LOG.error("Ошибка при создании нового чата:", e)
@@ -125,9 +147,7 @@ class DBAdapter:  # responsible for Users and Chats
                     FROM packages as p
                     LEFT JOIN public.users as u on u.user_id = p.custumer_user_id ;
             """
-            self.cursor.execute(update_chat_query)
-            self.connection.commit()
-            result = self.cursor.fetchall()
+            result = self.fetchall(update_chat_query)
             data_list = []
             for row in result:
                 data = dict()
@@ -151,21 +171,20 @@ class DBAdapter:  # responsible for Users and Chats
             UPDATE user_chat SET "ChatStatus" = {new_status}
             WHERE chat_id = {chat_id} AND user_id = {user_id};
             """
-            self.cursor.execute(update_chat_query)
-            self.connection.commit()
+            self.execute(update_chat_query)
             LOG.debug(f"Статус чата: {chat_id} для пользователя: {user_id} обновлен. Статус чата: {new_status}")
         except(Exception, Error) as e:
             LOG.error("Ошибка при обновлении статуса :", e)
 
-    def get_chat(self, chat_id) -> dict:
+    def get_chat(self, chat_id: int) -> dict:
         try:
             select_query = f"""
             SELECT * 
             FROM user_chat
             WHERE chat_id = {chat_id} 
             """
-            self.cursor.execute(select_query)
-            result = self.cursor.fetchone()
+            result = self.fetch_one(select_query)
+            LOG.debug(f"Найден чат {chat_id}: {result}")
             return result
         except(Exception, Error) as e:
             LOG.error("Ошибка при получении данных о чате:", e)
@@ -173,16 +192,14 @@ class DBAdapter:  # responsible for Users and Chats
     def get_chat_status(self, chat_id):
         try:
             select_query = f"""
-            SELECT 
-            "ChatStatus"
+            SELECT "ChatStatus"
             FROM user_chat
             WHERE chat_id = {chat_id} 
             """
-            self.cursor.execute(select_query)
-            result = self.cursor.fetchone()[0]
+            result = self.fetch_one(select_query)[0]
             return result
         except(Exception, Error) as e:
-            LOG.error("Ошибка при получении статуса чата:", e)
+            LOG.error(f"Ошибка при получении статуса чата {chat_id=}:", e)
 
     def insert_one(self, table, column1, column2, value1, value2):
         try:
@@ -190,8 +207,7 @@ class DBAdapter:  # responsible for Users and Chats
              INSERT INTO {table} ({column1},{column2})
              VALUES ({value1},{value2});
              """
-            self.cursor.execute(create_chat_query)
-            self.connection.commit()
+            self.execute(create_chat_query)
         except(Exception, Error) as e:
             LOG.error("Ошибка при создании нового чата:", e)
 
@@ -202,8 +218,7 @@ class DBAdapter:  # responsible for Users and Chats
                         WHERE {where_column} = {condition};
                         """
 
-            self.cursor.execute(update_chat_query)
-            self.connection.commit()
+            self.execute(update_chat_query)
         except(Exception, Error) as e:
             LOG.error("Ошибка при создании нового чата:", e)
 
@@ -215,8 +230,8 @@ class DBAdapter:  # responsible for Users and Chats
             FROM offers_filtr
             WHERE user_id = {user_id} 
             """
-            self.cursor.execute(select_query)
-            result = self.cursor.fetchone()
+
+            result = self.fetch_one(select_query)
             data_list = []
             data = dict()
             data['departure_country'] = result[1]
@@ -236,15 +251,13 @@ class DBAdapter:  # responsible for Users and Chats
             FROM offers_filtr
             WHERE user_id = {user_id};
             """
-            self.cursor.execute(select_query)
-            result = self.cursor.fetchone()
-            if result == None:
+            result = self.fetch_one(select_query)
+            if result is None:
                 set_user_id_query = f"""
                 INSERT INTO offers_filtr (user_id)
                 VALUES ({user_id});
                 """
-                self.cursor.execute(set_user_id_query)
-                self.connection.commit()
+                self.execute(set_user_id_query)
             else:
                 pass
         except(Exception, Error) as e:
@@ -256,8 +269,7 @@ class DBAdapter:  # responsible for Users and Chats
                             WHERE user_id = {user_id};
                             """
 
-                self.cursor.execute(query)
-                self.connection.commit()
+                self.execute(query)
             except(Exception, Error) as e:
                 LOG.error("Ошибка при установки фильтра:", e)
 
@@ -282,9 +294,7 @@ class DBAdapter:  # responsible for Users and Chats
             WHERE executor_id = {user_id} and o.status = 'in progress'
                    """
 
-            self.cursor.execute(select_query)
-            self.connection.commit()
-            my_offers = self.cursor.fetchall()
+            my_offers = self.fetchall(select_query)
             return my_offers
 
         except(Exception, Error) as e:
@@ -311,9 +321,7 @@ class DBAdapter:  # responsible for Users and Chats
                 JOIN public.users as u on u.user_id = o.executor_id 
                 WHERE executor_id = 301213126 and o.status = 'done'
 """
-            self.cursor.execute(query)
-            self.connection.commit()
-            result = self.cursor.fetchall()
+            result = self.fetchall(query)
             print(result)
             return result
         except(Exception, Error) as e:
@@ -377,15 +385,19 @@ class GiveOffer(DBAdapter):
         try:
             created_date = date.date.today()
             query = f"""
-            INSERT INTO packages (custumer_user_id, created_date,status)
+            INSERT INTO packages (custumer_user_id, created_date, status)
                     VALUES ({custumer_user_id}, '{created_date}','created')
             RETURNING package_id
 
     """
-            self.cursor.execute(query)
-            self.connection.commit()
-            package_id = self.cursor.fetchone()[0]
-            self.callback_data = package_id
+            # self.cursor.execute(query)
+            # self.connection.commit()
+            # package_id = self.cursor.fetchone()
+            print()
+            package_id = self.fetch_one(query)
+            p_id = package_id[0]
+            self.callback_data = p_id
+            print()
         except(Exception, Error) as e:
             LOG.debug("Ошибка в создании посылки ", e)
 
@@ -396,24 +408,21 @@ class GiveOffer(DBAdapter):
             WHERE package_id = {self.callback_data} AND 
             custumer_user_id = {id}
             """
-            self.cursor.execute(query)
-            self.connection.commit()
-        except(Exception,Error) as e:
+            self.execute(query)
+        except(Exception, Error) as e:
             LOG.debug('Ошибка записи города отправки посылки', e)
 
-
-    def write_destination_city(self,destination_city,custumer_user_id):
-       try:
+    def write_destination_city(self, destination_city, custumer_user_id):
+        try:
 
             query = f"""
                     UPDATE packages SET destination_city = '{destination_city}'
                     WHERE package_id = {self.callback_data} AND 
                     custumer_user_id = {custumer_user_id}
                     """
-            self.cursor.execute(query)
-            self.connection.commit()
-       except(Exception,Error) as e:
-           LOG.debug("Ошабка записи данных города назначения ", e)
+            self.execute(query)
+        except(Exception, Error) as e:
+            LOG.debug("Ошабка записи данных города назначения ", e)
 
     def write_destination_country(self, destination_country, custumer_user_id):
         try:
@@ -422,20 +431,20 @@ class GiveOffer(DBAdapter):
                             WHERE package_id = {self.callback_data} AND 
                             custumer_user_id = {custumer_user_id}
                             """
-            self.cursor.execute(query)
-            self.connection.commit()
+            self.execute(query)
         except(Exception, Error) as e:
             LOG.debug('ошибка записи страны назначения', e)
 
-    def write_departure_country(self,departure_country,custumer_user_id):
-        query = f"""
-                    UPDATE packages SET departure_country = '{departure_country}'
-                    WHERE package_id = {self.callback_data} AND 
-                    custumer_user_id = {custumer_user_id}
-                    """
-        self.cursor.execute(query)
-        self.connection.commit()
-
+    def write_departure_country(self, departure_country, custumer_user_id):
+        try:
+            query = f"""
+                        UPDATE packages SET departure_country = '{departure_country}'
+                        WHERE package_id = {self.callback_data} AND 
+                        custumer_user_id = {custumer_user_id}
+                        """
+            self.execute(query)
+        except(Exception, Error) as e:
+            LOG.debug('Ошибка в записи страны отправления', e)
 
     def write_dispatch_date(self, custumer_user_id, data):
         try:
@@ -443,57 +452,50 @@ class GiveOffer(DBAdapter):
                     UPDATE packages SET despatch_date = '{data}'
                     WHERE package_id = {self.callback_data} AND 
                     custumer_user_id = {custumer_user_id}"""
-            self.cursor.execute(query)
-            self.connection.commit()
-        except(Exception,Error) as e:
+            self.execute(query)
+        except(Exception, Error) as e:
             LOG.debug('Ошибка в сохранении даты отправки посылки', e)
 
-    def write_title(self, title:str, custumer_user_id):
+    def write_title(self, title: str, custumer_user_id):
         try:
             query = f"""
                             UPDATE packages SET title = '{title}'
                             WHERE package_id = {self.callback_data} AND 
                             custumer_user_id = {custumer_user_id}
                             """
-            self.cursor.execute(query)
-            self.connection.commit()
+            self.execute(query)
 
-        except(Exception,Error) as e:
+        except(Exception, Error) as e:
             LOG.debug('Ошибка запииса тайтла в базу ', e)
 
-
-
-
-    def write_type_of_package(self,p_type:str,custumer_user_id):
+    def write_type_of_package(self, p_type: str, custumer_user_id):
         query = f"""
                 UPDATE packages SET type = '{p_type}'
                 WHERE package_id = {self.callback_data} AND 
                 custumer_user_id = {custumer_user_id}
                 """
-        self.cursor.execute(query)
-        self.connection.commit()
+        self.execute(query)
 
-    def write_size_of_package(self,package_size:str,custumer_user_id):
+    def write_size_of_package(self, package_size: str, custumer_user_id):
         query = f"""
                         UPDATE packages SET package_size = '{package_size}'
                         WHERE package_id = {self.callback_data} AND 
                         custumer_user_id = {custumer_user_id}
                         """
-        self.cursor.execute(query)
-        self.connection.commit()
+        self.execute(query)
 
-    def write_description(self,description, custumer_user_id):
+    def write_description(self, description, custumer_user_id):
         try:
             query = f"""
                 UPDATE packages SET description = '{description}'
                 WHERE package_id = {self.callback_data} AND 
                 custumer_user_id = {custumer_user_id}
                 """
-            self.cursor.execute(query)
-            self.connection.commit()
+            self.execute(query)
         except(Exception, Error) as e:
             LOG.debug('Ошибка записи описания в базу посылок', e)
-    def write_price(self,price,custumer_user_id):
+
+    def write_price(self, price, custumer_user_id):
         try:
 
             query = f"""
@@ -501,11 +503,9 @@ class GiveOffer(DBAdapter):
                         WHERE package_id = {self.callback_data} AND 
                         custumer_user_id = {custumer_user_id}
                         """
-            self.cursor.execute(query)
-            self.connection.commit()
-        except(Exception,Error) as e:
-            LOG.debug('Ошибка в записи цены',e)
-
+            self.execute(query)
+        except(Exception, Error) as e:
+            LOG.debug('Ошибка в записи цены', e)
 
     def show_writen_data_to_user(self):
         query = f"""
@@ -527,9 +527,7 @@ class GiveOffer(DBAdapter):
                     status = 'created'
 
 """
-        self.cursor.execute(query)
-        self.connection.commit()
-        rows = self.cursor.fetchone()
+        rows = self.fetch_one(query)
 
         data_list = []
         data = dict()
@@ -559,9 +557,21 @@ class GiveOffer(DBAdapter):
             Сколько готов заплатить: {data['price']} рублей        
             Описание: {data['description']}          
             Когда когда нужно забрать  {data['despatch_date']}
-            
-                """
+            """
         return text
+
+    def update_package_data(self, table, column, value, where_column, condition):
+        try:
+            update_chat_query = f"""
+                        UPDATE {table} SET {column} = {value}
+                        WHERE {where_column} = {condition} AND 
+                        package_id = {self.callback_data}
+                        ;
+                        """
+            self.execute(update_chat_query)
+        except(Exception, Error) as e:
+            LOG.error(f"Ошибка при обновлении данных в таблице {table=} колонка {column=} данные {value=}:", e)
+
 
 class OfferFilter(BaseModel):
     departure_city: str
@@ -581,9 +591,7 @@ class ShowOffers(DBAdapter):
                 LEFT JOIN public.users as u on u.user_id = p.custumer_user_id
                 WHERE status = 'created' and  departure_city ='{filters.departure_city}'
                 and  destination_country = '{filters.destination_country}';"""
-        self.cursor.execute(count)
-        self.connection.commit()
-        result = self.cursor.fetchall()
+        result = self.fetchall(count)
         return result[0][0]
 
     def get_one_row(self, filters: OfferFilter):
@@ -606,9 +614,7 @@ class ShowOffers(DBAdapter):
                     ORDER BY package_id
                     LIMIT 1 
     """
-        self.cursor.execute(query)
-        self.connection.commit()
-        result = self.cursor.fetchone()
+        result = self.fetch_one(query)
         return result
 
     def get_next_row(self, package_id: str, filters: OfferFilter):
@@ -634,9 +640,7 @@ class ShowOffers(DBAdapter):
                     ORDER BY package_id
                     LIMIT 1 
 """
-        self.cursor.execute(query)
-        self.connection.commit()
-        result = self.cursor.fetchone()
+        result = self.fetch_one(query)
         return result
 
     @staticmethod
@@ -666,25 +670,21 @@ class ShowOffers(DBAdapter):
             SELECT * FROM shown_offers
             WHERE user_id = {user_id}
     """
-            self.cursor.execute(select_query)
-            self.connection.commit()
-            result = self.cursor.fetchone()
+            result = self.fetch_one(select_query)
 
             if result is None:
                 insert_query = f"""
                 INSERT INTO shown_offers (user_id, package_id)
                 VALUES ({user_id}, {packeg_id})
     """
-                self.cursor.execute(insert_query)
-                self.connection.commit()
+                self.execute(insert_query)
 
             else:
                 query = f"""
                 UPDATE shown_offers SET package_id = '{packeg_id}'
                 WHERE user_id = {user_id};
                 """
-                self.cursor.execute(query)
-                self.connection.commit()
+                self.execute(query)
         except(Exception, Error) as e:
             print('Ошибка извлечения id посылки и юзера ', e)
 
@@ -695,9 +695,7 @@ class ShowOffers(DBAdapter):
                 FROM public.shown_offers
                 WHERE user_id = {user_id}
             """
-            self.cursor.execute(query)
-            self.connection.commit()
-            result = self.cursor.fetchone()[0]
+            result = self.fetch_one(query)[0]
             return result
         except(Exception, Error) as e:
             LOG.debug('Ошибка получения ID предыдущей показанной строки', e)
@@ -710,9 +708,7 @@ class ShowOffers(DBAdapter):
                 FROM packages
                 WHERE package_id = {package_id}
     """
-            self.cursor.execute(query)
-            self.connection.commit()
-            result = self.cursor.fetchone()[0]
+            result = self.fetch_one(query)[0]
             return result
         except(Exception, Error) as e:
             LOG.debug('Ошибка извлечения ID пользователя по ID посылки')
@@ -738,9 +734,7 @@ class OffersInWork(DBAdapter):
                executor_id = {filters.executer_id} and package_id = {filters.package_id}
                 ;
                """
-        self.cursor.execute(query)
-        self.connection.commit()
-        result = self.cursor.fetchone()
+        result = self.fetch_one(query)
         return result
 
     def check_unique_id(self, filters: OfferWorkFilter):
@@ -752,9 +746,7 @@ class OffersInWork(DBAdapter):
                        executor_id = {filters.executer_id} and package_id = {filters.package_id}
                         ;
                        """
-        self.cursor.execute(query)
-        self.connection.commit()
-        result = self.cursor.fetchone()
+        result = self.cursor.fetch_one(query)
         return result
 
     def star_work(self, filters: OfferWorkFilter):
@@ -766,16 +758,14 @@ class OffersInWork(DBAdapter):
         VALUES ('{filters.costumer_id}', '{filters.executer_id}','{order_start_date}','{filters.package_id}', 
         '{filters.order_chat_id}', 'in progress', '{gen_unique_number}');
         """
-        self.cursor.execute(query_orders)
-        self.connection.commit()
+        self.execute(query_orders)
 
         query_packages = f"""
                 UPDATE packages 
                 SET status = 'in progress'
                 WHERE package_id = {filters.package_id};
                 """
-        self.cursor.execute(query_packages)
-        self.connection.commit()
+        self.execute(query_packages)
 
     def end_work(self, unique_order_number, filters: OfferWorkFilter):
         try:
@@ -785,19 +775,16 @@ class OffersInWork(DBAdapter):
             SET order_finish_date = '{order_stop_date}', status = 'done'
             WHERE unique_order_numner = {unique_order_number} ;
             """
-            self.cursor.execute(query)
-            self.connection.commit()
+            self.execute(query)
 
             query_packages = f"""
                             UPDATE packages 
                             SET status = 'done'
                             WHERE package_id = {filters.package_id};
                             """
-            self.cursor.execute(query_packages)
-            self.connection.commit()
+            self.execute(query_packages)
         except(Exception, Error) as e:
             LOG.debug('Ошибка окончания заказа', e)
-
 
 # class DBOffersManager:
 #
@@ -834,4 +821,3 @@ class OffersInWork(DBAdapter):
 #             statement = select(OfferInDB).where(and_(*params))
 #             offer: "OfferInDB" = session.exec(statement).first()
 #             return offer
-

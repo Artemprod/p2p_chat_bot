@@ -17,16 +17,19 @@ from logs import init_logging
 from secrets import SECRETS
 from telegramcalendar import calendar
 import datetime
+
 init_logging()
 
 LOG = logging.getLogger(__name__)
 
+
 class DataChose(str, Enum):
     TODAY = 'Сегодня'
-    TOMORROW ='Завтра'
-    NEXT_WEEK ='На следующей недели'
+    TOMORROW = 'Завтра'
+    NEXT_WEEK = 'На следующей недели'
     DAY_AFTER_TOMORROW = 'Послезавтра'
     SHOW_CALENDAR = 'Показать календарь'
+
 
 class UserOffersActionsRequests(str, Enum):
     NEXT_OFFER = 'Следующий новый заказ'
@@ -40,6 +43,18 @@ class UserOffersActionsRequests(str, Enum):
     BACK_TO_NEW_OFFERS = 'Обратно к новым заказам'
     BACK_TO_MAIN_MENU = 'Обратно в главное меню'
 
+    # для изменения информации в создании посылки
+    CHANGE_PACKAGE_DEPARTURE_COUNTRY = 'Страну отправки'
+    CHANGE_PACKAGE_DEPARTURE_CITY = 'Город отправки'
+    CHANGE_PACKAGE_DISTANATION_CITY = 'Город назначения'
+    CHANGE_PACKAGE_DISTANATION_COUNTRY = 'Страну назначения'
+    CHANGE_PACKAGE_TITLE = 'Название'
+    CHANGE_PACKAGE_DISCRIPTION = 'Описание'
+    CHANGE_PACKAGE_DATA = 'Дату'
+    CHANGE_PACKAGE_PRICE = 'Цену'
+    CHANGE_PACKAGE_ALL = 'Поменять все'
+    CANCEL = 'Отмена'
+
 
 class UserActionRequest(str, Enum):
     TAKE_ORDER = 'Я хочу взять посылку'
@@ -52,14 +67,29 @@ class UserActionRequest(str, Enum):
 class ChatStatus(int, Enum):
     ASK_USER_NAME = 1
     ASK_USER_PHONE = 2
+    MAIN_MENU = 5
     SHOW_OFFERS = 9
     TAKE_DEPARTURE_CITY = 12
-    TAKE_DISTANATION_CITY =13
+    TAKE_DISTANATION_CITY = 13
     DATA_OF_DEPARTURE = 14
     TITLE = 15
     DESCRIPTION = 16
     PRICE = 17
     ACECEPTED = 18
+    CHANGE_PACKAGE_MODE = 19
+
+    # статусы изменения информации о посылки
+    CHANGE_PACKAGE_DEPARTURE_COUNTRY = 20
+    CHANGE_PACKAGE_DEPARTURE_CITY = 21
+    CHANGE_PACKAGE_DESTINATION_CITY = 22
+    CHANGE_PACKAGE_DESTINATION_COUNTRY = 23
+    CHANGE_PACKAGE_TITLE = 24
+    CHANGE_PACKAGE_DESCRIPTION = 25
+    CHANGE_PACKAGE_DATA = 26
+    CHANGE_PACKAGE_PRICE = 27
+    CHANGE_PACKAGE_ALL = 28
+    CANCEL = 29
+    SHOW_USER_PACKAGE = 30
 
 
 class OfferStatus(str, Enum):
@@ -145,17 +175,21 @@ class ChatBot:
     def message_handler(self, update: Update, context: CallbackContext):
         chat_id = update.effective_chat.id
         user_id = update.effective_user.id
-        chat = self.db_adapter.get_chat(chat_id)
-        user = self.db_adapter.get_user(user_id)
 
+        user = self.db_adapter.get_user(user_id)
         if user is None:
             self.db_adapter.create_user(
                 first_name=update.effective_user.first_name,
                 user_id=update.effective_user.id
             )
+            user = self.db_adapter.get_user(user_id)
+            LOG.debug(f"Created new user: {user}")
 
+        chat = self.db_adapter.get_chat(chat_id)
         if chat is None:
             self.db_adapter.create_chat(chat_id, user_id)
+            chat = self.db_adapter.get_chat(chat_id)
+            LOG.debug(f"Created new chat: {chat}")
 
         self.command_start(update)
         chat_status = self.db_adapter.get_chat_status(chat_id)
@@ -183,7 +217,7 @@ class ChatBot:
         elif chat_status == 4:  # status of main menu. Show main menu to user
             self.main_menu_keyboard()
 
-        elif chat_status == 5:  # main menu handler
+        elif chat_status == ChatStatus.MAIN_MENU.value:  # main menu handler
             if update.message.text == UserActionRequest.TAKE_ORDER.value:
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"{'С какого города поедешь?'}", reply_markup=ReplyKeyboardRemove())
@@ -194,7 +228,8 @@ class ChatBot:
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"{'В каком городе нужно забрать посылку? '}",
                                          reply_markup=ReplyKeyboardRemove())
-                self.db_adapter.update_chat_status(ChatStatus.TAKE_DEPARTURE_CITY.value, update.effective_user.id, update.effective_chat.id)
+                self.db_adapter.update_chat_status(ChatStatus.TAKE_DEPARTURE_CITY.value, update.effective_user.id,
+                                                   update.effective_chat.id)
             elif update.message.text == UserActionRequest.GIVE_RUTE.value:
                 pass
         elif chat_status == 6:
@@ -270,17 +305,19 @@ class ChatBot:
                 self.db_adapter.update_chat_status(9, update.effective_user.id, update.effective_chat.id)
 
             elif update.message.text == UserOffersActionsRequests.BACK_TO_MAIN_MENU.value:
-                self.db_adapter.update_chat_status(5, update.effective_user.id, update.effective_chat.id)
+                self.db_adapter.update_chat_status(ChatStatus.MAIN_MENU.value, update.effective_user.id,
+                                                   update.effective_chat.id)
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"Что ты хочешь сделать'",
-                                         reply_markup=self.main_menu_keyboard(update))
+                                         reply_markup=self.main_menu_keyboard())
 
         elif chat_status == 11:
             if update.message.text == UserOffersActionsRequests.BACK_TO_MAIN_MENU.value:
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"Что ты хочешь сделать'",
-                                         reply_markup=self.main_menu_keyboard( ))
-                self.db_adapter.update_chat_status(5, update.effective_user.id, update.effective_chat.id)
+                                         reply_markup=self.main_menu_keyboard())
+                self.db_adapter.update_chat_status(ChatStatus.MAIN_MENU.value, update.effective_user.id,
+                                                   update.effective_chat.id)
 
             elif update.message.text == UserActionRequest.CHANGE_DEPARTURE_CITY.value:
                 context.bot.send_message(chat_id=update.effective_chat.id,
@@ -305,7 +342,8 @@ class ChatBot:
             city = update.message.text
             self.give_data.write_destination_city(city, update.effective_user.id)
             context.bot.send_message(chat_id=update.effective_chat.id,
-                                     text=f"'Когда хочешь отправить посылку?", reply_markup=self.chose_date_keyboard())
+                                     text=f"Когда хочешь отправить посылку?",
+                                     reply_markup=self.chose_date_keyboard())
 
             self.db_adapter.update_chat_status(ChatStatus.DATA_OF_DEPARTURE.value, update.effective_user.id,
                                                update.effective_chat.id)
@@ -325,7 +363,7 @@ class ChatBot:
                                                    update.effective_chat.id)
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text='Что ты хочешь отправить?',
-                                         reply_markup = ReplyKeyboardRemove()
+                                         reply_markup=ReplyKeyboardRemove()
                                          )
 
 
@@ -363,10 +401,10 @@ class ChatBot:
                 next_week = today + datetime.timedelta(days=7)
                 self.give_data.write_dispatch_date(update.effective_user.id, next_week)
                 context.bot.send_message(chat_id=update.effective_chat.id,
-                                         text=f"Ты выбрал эту {next_week .strftime('%d/%m/%Y')} дату:"
+                                         text=f"Ты выбрал эту {next_week.strftime('%d/%m/%Y')} дату:"
                                          )
                 self.db_adapter.update_chat_status(ChatStatus.TITLE.value, update.effective_user.id,
-                                               update.effective_chat.id)
+                                                   update.effective_chat.id)
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text='Что ты хочешь отправить?',
                                          reply_markup=ReplyKeyboardRemove()
@@ -376,6 +414,8 @@ class ChatBot:
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"Выбери дату:",
                                          reply_markup=calendar.create_calendar())
+
+
 
         elif chat_status == ChatStatus.TITLE.value:
             title = update.message.text
@@ -388,9 +428,9 @@ class ChatBot:
 
 
         elif chat_status == ChatStatus.PRICE.value:
-            price_text =update.message.text
+            price_text = update.message.text
             price = self.validate_price(price_text)
-            self.give_data.write_price(price=price,custumer_user_id=update.effective_user.id)
+            self.give_data.write_price(price=price, custumer_user_id=update.effective_user.id)
             self.db_adapter.update_chat_status(ChatStatus.DESCRIPTION.value, update.effective_user.id,
                                                update.effective_chat.id)
             context.bot.send_message(chat_id=update.effective_chat.id,
@@ -401,9 +441,10 @@ class ChatBot:
         elif chat_status == ChatStatus.DESCRIPTION.value:
             description = update.message.text
             self.give_data.write_description(description, update.effective_user.id)
-            context.bot.send_message(chat_id=update.effective_chat.id,
-                                     text='отлично, давай проверим, правильно ли я все записал'
-                                     )
+            context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text='Отлично, давай проверим, правильно ли я все записал?'
+            )
             text = self.give_data.show_writen_data_to_user()
             context.bot.send_message(chat_id=update.effective_chat.id,
                                      text=f"{text}",
@@ -418,38 +459,360 @@ class ChatBot:
                                          text=f"Супер, жди когда на твое объявление откликнуться",
                                          reply_markup=self.main_menu_keyboard()
                                          )
-                self.db_adapter.update_chat_status(5, update.effective_user.id,
+                self.db_adapter.update_chat_status(ChatStatus.MAIN_MENU.value, update.effective_user.id,
                                                    update.effective_chat.id)
             elif replay == 'Нет':
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"Какую информацию ты хочешь изменить?",
+                                         reply_markup=self.change_package_data_keybord())
+                self.db_adapter.update_chat_status(ChatStatus.CHANGE_PACKAGE_MODE.value, update.effective_user.id,
+                                                   update.effective_chat.id)
+
+        elif chat_status == ChatStatus.CHANGE_PACKAGE_MODE.value:
+
+            if update.message.text == UserOffersActionsRequests.CHANGE_PACKAGE_DEPARTURE_CITY.value:
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"С какого города нужно забрать посылку ? ")
+                self.db_adapter.update_chat_status(ChatStatus.CHANGE_PACKAGE_DEPARTURE_CITY.value,
+                                                   update.effective_user.id,
+                                                   update.effective_chat.id)
+
+
+
+
+            elif update.message.text == UserOffersActionsRequests.CHANGE_PACKAGE_DEPARTURE_COUNTRY.value:
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"Из какой страны хочешь отправить?",
+                                         )
+                self.db_adapter.update_chat_status(ChatStatus.CHANGE_PACKAGE_DEPARTURE_COUNTRY.value, update.effective_user.id,
+                                                   update.effective_chat.id)
+
+            elif update.message.text == UserOffersActionsRequests.CHANGE_PACKAGE_DISTANATION_CITY.value:
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"В какой город хочешь отправить?",
+                                         )
+                self.db_adapter.update_chat_status(ChatStatus.CHANGE_PACKAGE_DESTINATION_CITY.value,
+                                                   update.effective_user.id,
+                                                   update.effective_chat.id)
+
+            elif update.message.text == UserOffersActionsRequests.CHANGE_PACKAGE_DISTANATION_COUNTRY.value:
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"В какую страну хочешь отправить?",
+                                         )
+                self.db_adapter.update_chat_status(ChatStatus.CHANGE_PACKAGE_DESTINATION_COUNTRY.value,
+                                                   update.effective_user.id,
+                                                   update.effective_chat.id)
+
+            elif update.message.text == UserOffersActionsRequests.CHANGE_PACKAGE_DATA.value:
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"Когда хочешь отправить посылку?",
+                                         reply_markup=self.chose_date_keyboard())
+
+                self.db_adapter.update_chat_status(ChatStatus.CHANGE_PACKAGE_DATA.value, update.effective_user.id,
+                                                   update.effective_chat.id)
+
+            elif update.message.text == UserOffersActionsRequests.CHANGE_PACKAGE_TITLE.value:
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"Что ты хочешь отправить?",
+                                         )
+                self.db_adapter.update_chat_status(ChatStatus.CHANGE_PACKAGE_TITLE.value,
+                                                   update.effective_user.id,
+                                                   update.effective_chat.id)
+
+            elif update.message.text == UserOffersActionsRequests.CHANGE_PACKAGE_DESCRIPTION.value:
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"Опиши свою посылку",
+                                         )
+                self.db_adapter.update_chat_status(ChatStatus.CHANGE_PACKAGE_DESCRIPTION.value,
+                                                   update.effective_user.id,
+                                                   update.effective_chat.id)
+
+            elif update.message.text == UserOffersActionsRequests.CHANGE_PACKAGE_PRICE.value:
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"Сколько готов отдать за доставку? ",
+                                         )
+                self.db_adapter.update_chat_status(ChatStatus.CHANGE_PACKAGE_PRICE.value,
+                                                   update.effective_user.id,
+                                                   update.effective_chat.id)
+
+            elif update.message.text == UserOffersActionsRequests.CHANGE_PACKAGE_ALL.value:
                 pass
 
+        elif chat_status == ChatStatus.CHANGE_PACKAGE_DEPARTURE_COUNTRY.value:
+            value = update.message.text
+            self.give_data.write_departure_country(value, update.effective_user.id)
+
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text=f"Страна отправления посылки изменен."
+                                     )
+
+            text = self.give_data.show_writen_data_to_user()
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text='Посмотри я правильно все записал? ',
+                                     )
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text=f"{text}",
+                                     reply_markup=self.keyboard_boolean()
+                                     )
+            self.db_adapter.update_chat_status(ChatStatus.ACECEPTED.value, update.effective_user.id,
+                                               update.effective_chat.id)
+
+        elif chat_status == ChatStatus.CHANGE_PACKAGE_DEPARTURE_CITY.value:
+            value = update.message.text
+            self.give_data.write_departure_city(value, update.effective_user.id)
+
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text=f"Город отправления посылки изменен."
+                                     )
+
+            text = self.give_data.show_writen_data_to_user()
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text='Посмотри я правильно все записал? ',
+                                     )
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text=f"{text}",
+                                     reply_markup=self.keyboard_boolean()
+                                     )
+            self.db_adapter.update_chat_status(ChatStatus.ACECEPTED.value, update.effective_user.id,
+                                               update.effective_chat.id)
+
+        elif chat_status == ChatStatus.CHANGE_PACKAGE_DESTINATION_CITY.value:
+            value = update.message.text
+            self.give_data.write_destination_city(value, update.effective_user.id)
+
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text=f"Город назначения посылки изменен."
+                                     )
+
+            text = self.give_data.show_writen_data_to_user()
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text='Посмотри я правильно все записал? ',
+                                     )
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text=f"{text}",
+                                     reply_markup=self.keyboard_boolean()
+                                     )
+            self.db_adapter.update_chat_status(ChatStatus.ACECEPTED.value, update.effective_user.id,
+                                               update.effective_chat.id)
 
 
+        elif chat_status == ChatStatus.CHANGE_PACKAGE_DESTINATION_COUNTRY.value:
+            value = update.message.text
+            self.give_data.write_destination_country(value, update.effective_user.id)
+
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text=f"Страна назначения посылки изменена."
+                                     )
+
+            text = self.give_data.show_writen_data_to_user()
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text='Посмотри я правильно все записал? ',
+                                     )
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text=f"{text}",
+                                     reply_markup=self.keyboard_boolean()
+                                     )
+            self.db_adapter.update_chat_status(ChatStatus.ACECEPTED.value, update.effective_user.id,
+                                               update.effective_chat.id)
+
+        elif chat_status == ChatStatus.CHANGE_PACKAGE_DATA.value:
+
+            if update.message.text == DataChose.TODAY.value:
+                today = datetime.datetime.today().strftime("%d/%m/%Y")
+
+                self.give_data.write_dispatch_date(update.effective_user.id, today)
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"Ты выбрал эту {today} дату:"
+                                         )
+                text = self.give_data.show_writen_data_to_user()
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text='Посмотри я правильно все записал? ',
+                                         )
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"{text}",
+                                         reply_markup=self.keyboard_boolean()
+                                         )
+
+                self.db_adapter.update_chat_status(ChatStatus.ACECEPTED.value, update.effective_user.id,
+                                                   update.effective_chat.id)
 
 
+            elif update.message.text == DataChose.TOMORROW.value:
+                today = datetime.date.today()
+                tomorrow = today + datetime.timedelta(days=1)
 
+                self.give_data.write_dispatch_date(update.effective_user.id, tomorrow)
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"Ты выбрал эту {tomorrow.strftime('%d/%m/%Y')} дату:"
+                                         )
+                text = self.give_data.show_writen_data_to_user()
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text='Посмотри я правильно все записал? ',
+                                         )
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"{text}",
+                                         reply_markup=self.keyboard_boolean()
+                                         )
+
+                self.db_adapter.update_chat_status(ChatStatus.ACECEPTED.value, update.effective_user.id,
+                                                   update.effective_chat.id)
+
+            elif update.message.text == DataChose.DAY_AFTER_TOMORROW.value:
+                today = datetime.date.today()
+                day_after_tomorrow = today + datetime.timedelta(days=2)
+                self.give_data.write_dispatch_date(update.effective_user.id, day_after_tomorrow)
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"Ты выбрал эту {day_after_tomorrow.strftime('%d/%m/%Y')} дату:"
+                                         )
+                text = self.give_data.show_writen_data_to_user()
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text='Посмотри я правильно все записал? ',
+                                         )
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"{text}",
+                                         reply_markup=self.keyboard_boolean()
+                                         )
+
+                self.db_adapter.update_chat_status(ChatStatus.ACECEPTED.value, update.effective_user.id,
+                                                   update.effective_chat.id)
+            elif update.message.text == DataChose.NEXT_WEEK.value:
+                today = datetime.date.today()
+                next_week = today + datetime.timedelta(days=7)
+                self.give_data.write_dispatch_date(update.effective_user.id, next_week)
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"Ты выбрал эту {next_week.strftime('%d/%m/%Y')} дату:"
+                                         )
+                text = self.give_data.show_writen_data_to_user()
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text='Посмотри я правильно все записал? ',
+                                         )
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"{text}",
+                                         reply_markup=self.keyboard_boolean()
+                                         )
+
+                self.db_adapter.update_chat_status(ChatStatus.ACECEPTED.value, update.effective_user.id,
+                                                   update.effective_chat.id)
+
+
+            elif update.message.text == DataChose.SHOW_CALENDAR.value:
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"Выбери дату:",
+                                         reply_markup=calendar.create_calendar())
+
+        elif chat_status == ChatStatus.CHANGE_PACKAGE_TITLE.value:
+            value = update.message.text
+            self.give_data.write_title(value, update.effective_user.id)
+
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text=f"Посылка изменена."
+                                     )
+
+            text = self.give_data.show_writen_data_to_user()
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text='Посмотри я правильно все записал? ',
+                                     )
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text=f"{text}",
+                                     reply_markup=self.keyboard_boolean()
+                                     )
+            self.db_adapter.update_chat_status(ChatStatus.ACECEPTED.value, update.effective_user.id,
+                                               update.effective_chat.id)
+
+        elif chat_status == ChatStatus.CHANGE_PACKAGE_DESCRIPTION.value:
+            value = update.message.text
+            self.give_data.write_description(value, update.effective_user.id)
+
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text=f"Описание посылки изменено."
+                                     )
+
+            text = self.give_data.show_writen_data_to_user()
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text='Посмотри я правильно все записал? ',
+                                     )
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text=f"{text}",
+                                     reply_markup=self.keyboard_boolean()
+                                     )
+            self.db_adapter.update_chat_status(ChatStatus.ACECEPTED.value, update.effective_user.id,
+                                               update.effective_chat.id)
+
+        elif chat_status == ChatStatus.CHANGE_PACKAGE_PRICE.value:
+            value = update.message.text
+            self.give_data.write_price(value, update.effective_user.id)
+
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text=f"Цена посылки изменена."
+                                     )
+
+            text = self.give_data.show_writen_data_to_user()
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text='Посмотри я правильно все записал? ',
+                                     )
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text=f"{text}",
+                                     reply_markup=self.keyboard_boolean()
+                                     )
+            self.db_adapter.update_chat_status(ChatStatus.ACECEPTED.value, update.effective_user.id,
+                                               update.effective_chat.id)
+        elif chat_status == ChatStatus.CHANGE_PACKAGE_ALL.value:
+            pass
+        elif chat_status == ChatStatus.CANCEL.value:
+            pass
+        elif chat_status == ChatStatus.SHOW_USER_PACKAGE.value:
+            pass
 
     def command_start(self, update: Update):
         if update.message.text == '/start':
             update.message.reply_text(
                 'Привет, меня зовут бот. Я соединяю людей и товары по всему миру.\n Давай с тобой познакомимся')
-            self.db_adapter.update_chat_status(1, update.effective_user.id, update.effective_chat.id)
+            self.db_adapter.update_chat_status(
+                ChatStatus.ASK_USER_NAME.value,
+                update.effective_user.id,
+                update.effective_chat.id
+            )
         else:
             pass
 
     def callback_handler(self, update: Update, context: CallbackContext):
-        selected, date = calendar.process_calendar_selection(context.bot, update)
-        if selected:
-            self.give_data.write_dispatch_date(update.effective_user.id, date.strftime("%d/%m/%Y"))
-            context.bot.send_message(chat_id=update.callback_query.from_user.id,
-                             text="Ты выбрал %s" % (date.strftime("%d/%m/%Y")),
-                             reply_markup=ReplyKeyboardRemove())
-            self.db_adapter.update_chat_status(ChatStatus.TITLE.value, update.effective_user.id,
-                                               update.effective_chat.id)
-            context.bot.send_message(chat_id=update.effective_chat.id,
-                                     text='Что ты хочешь отправить?',
-                                     reply_markup=ReplyKeyboardRemove()
-                                     )
+        chat_status = self.db_adapter.get_chat_status(update.effective_chat.id)
+
+        if chat_status == ChatStatus.DATA_OF_DEPARTURE.value:
+            selected, date = calendar.process_calendar_selection(context.bot, update)
+            if selected:
+                self.give_data.write_dispatch_date(update.effective_user.id, date.strftime("%d/%m/%Y"))
+                context.bot.send_message(chat_id=update.callback_query.from_user.id,
+                                         text="Ты выбрал %s" % (date.strftime("%d/%m/%Y")),
+                                         reply_markup=ReplyKeyboardRemove())
+
+                self.db_adapter.update_chat_status(ChatStatus.TITLE.value, update.effective_user.id,
+                                                   update.effective_chat.id)
+
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text='Что ты хочешь отправить?',
+                                         reply_markup=ReplyKeyboardRemove()
+                                         )
+        elif chat_status == ChatStatus.CHANGE_PACKAGE_DATA.value:
+
+            selected, date = calendar.process_calendar_selection(context.bot, update)
+            if selected:
+                self.give_data.write_dispatch_date(update.effective_user.id, date.strftime("%d/%m/%Y"))
+                context.bot.send_message(chat_id=update.callback_query.from_user.id,
+                                         text="Ты выбрал %s" % (date.strftime("%d/%m/%Y")),
+                                         reply_markup=ReplyKeyboardRemove())
+
+                text = self.give_data.show_writen_data_to_user()
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text='Посмотри я правильно все записал? ',
+                                         )
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"{text}",
+                                         reply_markup=self.keyboard_boolean()
+                                         )
+
+                self.db_adapter.update_chat_status(ChatStatus.ACECEPTED.value, update.effective_user.id,
+                                                   update.effective_chat.id)
 
 
         query = update.callback_query
@@ -464,10 +827,10 @@ class ChatBot:
         user = self.db_adapter.get_user(offer_user_id)
 
         filters = OfferWorkFilter(
-           costumer_id=offer_user_id,
-           executer_id=update.effective_user.id,
-           package_id=package_id,
-           order_chat_id=update.effective_chat.id
+            costumer_id=offer_user_id,
+            executer_id=update.effective_user.id,
+            package_id=package_id,
+            order_chat_id=update.effective_chat.id
         )
 
         if answer == UserOffersActionsRequests.TAKE_OFFER.value:
@@ -511,10 +874,21 @@ class ChatBot:
         result_2 = re.findall(reg_template_digit, str(result_1[0]))[0]
         return int(result_2)
 
-    def ask_phone_number(self, update, context):
-        self.db_adapter.update_phone_number(update.message.contact.phone_number, update.effective_user.id)
-        context.bot.send_message(chat_id=update.effective_chat.id,
-                                 text="Записал", reply_markup=ReplyKeyboardRemove())
+    def ask_phone_number(self, update: Update, context):
+        try:
+            phone_number = update.message.contact.phone_number
+        except AttributeError as ex:
+            # TODO: валидировать текст номера телефона
+            phone_number = update.message.text
+
+        self.db_adapter.update_phone_number(
+            phone_number=phone_number,
+            user_id=update.effective_user.id
+        )
+        context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Записал", reply_markup=ReplyKeyboardRemove()
+        )
 
     def validate_price(self, text):
         template_digit = '\d+'
@@ -634,12 +1008,29 @@ class ChatBot:
     def chose_date_keyboard(self):
         today = KeyboardButton(DataChose.TODAY.value)
         tomorrow = KeyboardButton(DataChose.TOMORROW.value)
-        day_after_tomorrow= KeyboardButton(DataChose.DAY_AFTER_TOMORROW.value)
+        day_after_tomorrow = KeyboardButton(DataChose.DAY_AFTER_TOMORROW.value)
         next_week = KeyboardButton(DataChose.NEXT_WEEK.value)
         show_menu = KeyboardButton(DataChose.SHOW_CALENDAR.value)
-        menu_list = [[today ,tomorrow],[day_after_tomorrow,next_week],[show_menu]]
+        menu_list = [[today, tomorrow], [day_after_tomorrow, next_week], [show_menu]]
         markup_chose_date_menu = ReplyKeyboardMarkup(menu_list, resize_keyboard=True)
         return markup_chose_date_menu
+
+    @classmethod
+    def change_package_data_keybord(self):
+        departure_city = KeyboardButton(UserOffersActionsRequests.CHANGE_PACKAGE_DEPARTURE_CITY.value)
+        departure_country = KeyboardButton(UserOffersActionsRequests.CHANGE_PACKAGE_DEPARTURE_COUNTRY.value)
+        distanation_city = KeyboardButton(UserOffersActionsRequests.CHANGE_PACKAGE_DISTANATION_CITY.value)
+        distanation_country = KeyboardButton(UserOffersActionsRequests.CHANGE_PACKAGE_DISTANATION_COUNTRY.value)
+        data = KeyboardButton(UserOffersActionsRequests.CHANGE_PACKAGE_DATA.value)
+        title = KeyboardButton(UserOffersActionsRequests.CHANGE_PACKAGE_TITLE.value)
+        discription = KeyboardButton(UserOffersActionsRequests.CHANGE_PACKAGE_DISCRIPTION.value)
+        price = KeyboardButton(UserOffersActionsRequests.CHANGE_PACKAGE_PRICE.value)
+        change_all = KeyboardButton(UserOffersActionsRequests.CHANGE_PACKAGE_ALL.value)
+        cancel_action = KeyboardButton(UserOffersActionsRequests.CANCEL.value)
+        menu_list = [[departure_city, departure_country], [distanation_city, distanation_country], [data, title],
+                     [discription, price], [change_all], [cancel_action]]
+        markup_change_package = ReplyKeyboardMarkup(menu_list, resize_keyboard=True)
+        return markup_change_package
 
     @classmethod
     def inline_menu_take_order(cls):
