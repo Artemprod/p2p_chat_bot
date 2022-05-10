@@ -700,25 +700,6 @@ class ChatBot:
                                          text=f"Выбери дату:",
                                          reply_markup=calendar.create_calendar())
 
-        elif chat_status == ChatStatus.CHANGE_PACKAGE_TITLE.value:
-            value = update.message.text
-            self.give_data.write_title(value, update.effective_user.id)
-
-            context.bot.send_message(chat_id=update.effective_chat.id,
-                                     text=f"Посылка изменена."
-                                     )
-
-            text = self.give_data.show_writen_data_to_user()
-            context.bot.send_message(chat_id=update.effective_chat.id,
-                                     text='Посмотри я правильно все записал? ',
-                                     )
-            context.bot.send_message(chat_id=update.effective_chat.id,
-                                     text=f"{text}",
-                                     reply_markup=self.keyboard_boolean()
-                                     )
-            self.db_adapter.update_chat_status(ChatStatus.ACECEPTED.value, update.effective_user.id,
-                                               update.effective_chat.id)
-
         elif chat_status == ChatStatus.CHANGE_PACKAGE_DESCRIPTION.value:
             value = update.message.text
             self.give_data.write_description(value, update.effective_user.id)
