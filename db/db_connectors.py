@@ -390,14 +390,9 @@ class GiveOffer(DBAdapter):
             RETURNING package_id
 
     """
-            # self.cursor.execute(query)
-            # self.connection.commit()
-            # package_id = self.cursor.fetchone()
-            # print()
             package_id = self.fetch_one(query)
             p_id = package_id[0]
             self.callback_data = p_id
-            print()
         except(Exception, Error) as e:
             LOG.debug("Ошибка в создании посылки ", e)
 
