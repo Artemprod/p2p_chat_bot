@@ -93,4 +93,4 @@ psycopg2-binary==2.9.3
 python-telegram-bot==13.11
 coloredlogs==15.0.1
 sqlmodel==0.0.6
-SQLAlchemy~=1.4.36cd
+SQLAlchemy 
