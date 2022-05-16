@@ -10,8 +10,8 @@ COPY requirements.txt /app/
 
 RUN echo "Installing python project dependencies" \
     && pip install -r requirements.txt
-    
-RUN pip install --no-binary pyenchant
+
+RUN pip install pyenchant
 
 COPY bot_v2.py logs.py secrets.py cities.txt country.txt /app/
 COPY db/ /app/db
