@@ -89,8 +89,4 @@ w3lib==1.22.0
 wget==3.2
 zope.interface==5.4.0
 
-psycopg2-binary==2.9.3
-python-telegram-bot==13.11
-coloredlogs==15.0.1
-sqlmodel==0.0.6
-SQLAlchemy 
+
