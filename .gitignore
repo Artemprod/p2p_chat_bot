@@ -153,3 +153,6 @@ brokers/rabbitmq/logs/
 
 api-redoc.html
 sequence/
+
+# other files
+file_for_testing.py

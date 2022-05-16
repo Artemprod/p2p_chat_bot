@@ -1,3 +1,4 @@
+import phonenumbers
 import enchant
 import difflib
 import logging
@@ -56,6 +57,10 @@ class UserOffersActionsRequests(str, Enum):
     CHANGE_PACKAGE_PRICE = 'Цену'
     CHANGE_PACKAGE_ALL = 'Поменять все'
     CANCEL = 'Отмена'
+
+    #контакты
+    SEND_PHONE_NUMBER = "Отправить номер телефона"
+    SEND_TELEGAMM_NAME = "Отправить имя в телеграм"
 
 
 class UserActionRequest(str, Enum):
@@ -202,7 +207,7 @@ class ChatBot:
         filters_params = self.db_adapter.get_filter(update.effective_user.id)
         filters = OfferFilter(
             departure_city=filters_params['departure_city'],
-            destination_country=filters_params['destination_city']
+            destination_city=filters_params['destination_city']
         )
         if update.message.text == UserOffersActionsRequests.NEXT_OFFER.value:
             package_id = self.offers.get_previous_row_id(update.effective_user.id)
@@ -271,11 +276,25 @@ class ChatBot:
             self.keyboard_contact(update)
 
         elif chat_status == 3:
-            self.ask_phone_number(update, context)
-            if update.message.contact.phone_number:
+            if update.message.text == UserOffersActionsRequests.SEND_TELEGAMM_NAME:
+                tg_name = update.effective_user.name
+                self.db_adapter.update_telegram_name(tg_name, update.effective_user.id)
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"Записал")
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"{tg_name}")
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"что хочешь сделать?", reply_markup=self.main_menu_keyboard())
-                self.db_adapter.update_chat_status(5, update.effective_user.id, update.effective_chat.id)
+                self.db_adapter.update_chat_status(ChatStatus.MAIN_MENU.value, update.effective_user.id, update.effective_chat.id)
+
+            else:
+                self.ask_phone_number(update, context)
+
+
+
+
+
+
 
         elif chat_status == 4:  # status of main menu. Show main menu to user
             self.main_menu_keyboard()
@@ -365,11 +384,13 @@ class ChatBot:
         elif chat_status == ChatStatus.TRAVALER_SHOW_OFFERS.value:
             if update.message.text == "Да":
                 filters_params = self.db_adapter.get_filter(update.effective_user.id)
+                print()
                 filters = OfferFilter(
                     departure_city=filters_params['departure_city'],
-                    destination_country=filters_params['destination_city']
+                    destination_city=filters_params['destination_city']
                 )
                 offer = self.offers.get_one_row(filters=filters)
+                print()
 
                 if offer is not None:
                     offer_as_dict: dict = self.offers.query_to_dict(offer)
@@ -548,7 +569,6 @@ class ChatBot:
 
             check_city = self.check_place_name.city_validate(update.message.text)
             if check_city is None:
-                self.give_data.write_departure_city(city, update.effective_user.id)
                 self.give_data.write_destination_city(city, update.effective_user.id)
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"Когда хочешь отправить посылку?",
@@ -1073,11 +1093,12 @@ class ChatBot:
         filters_params = self.db_adapter.get_filter(update.effective_user.id)
         filters = OfferFilter(
             departure_city=filters_params['departure_city'],
-            destination_country=filters_params['destination_city']
+            destination_city=filters_params['destination_city']
         )
         package_id = self.offers.get_previous_row_id(update.effective_user.id)
         offer_user_id = self.offers.get_user_id_by_package(package_id)
         user = self.db_adapter.get_user(offer_user_id)
+        print()
 
         filters = OfferWorkFilter(
             costumer_id=offer_user_id,
@@ -1090,12 +1111,16 @@ class ChatBot:
             query.answer()
             name = user[1]
             phone = user[4]
+            tg_name = user[7]
+            print()
             check_tuple = (update.effective_user.id, offer_user_id, package_id)
 
             if self.offers_in_work.check_working(filters=filters) != check_tuple:
 
                 context.bot.send_contact(update.effective_chat.id, phone, name,
-                                         reply_markup=self.inline_menu_close_order())
+                                         )
+                context.bot.send_message(update.effective_chat.id, text=f"{tg_name}")
+
                 self.offers_in_work.star_work(filters=filters)
             else:
                 pass
@@ -1120,6 +1145,25 @@ class ChatBot:
             self.db_adapter.update_user_name(name, update.effective_user.id)
             self.db_adapter.update_chat_status(3, update.effective_user.id, update.effective_chat.id)
 
+    def validate_phone_number(self, phone_number: str):
+        try:
+            template = '\d+\W+'
+            print()
+            result = re.match(template, phone_number)
+            if result is not None:
+                count_simbols = len(phone_number)
+                print()
+                if count_simbols < 6:
+                    return False
+                else:
+                    return True
+            else:
+                return False
+
+        except(Exception) as e:
+            LOG.debug(e)
+
+
     def serch_unique_id(self, text):
         reg_template_text = 'Уникальный ID заказа:(\s+\d+|\d+)'
         reg_template_digit = '\d+'
@@ -1127,21 +1171,62 @@ class ChatBot:
         result_2 = re.findall(reg_template_digit, str(result_1[0]))[0]
         return int(result_2)
 
+
     def ask_phone_number(self, update: Update, context):
         try:
-            phone_number = update.message.contact.phone_number
-        except AttributeError as ex:
-            # TODO: валидировать текст номера телефона
-            phone_number = update.message.text
+            number = update.message.contact.phone_number
+            self.db_adapter.update_phone_number(
+                    phone_number=number,
+                    user_id=update.effective_user.id
+                )
+            context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text="Записал", reply_markup=ReplyKeyboardRemove()
+                )
 
-        self.db_adapter.update_phone_number(
-            phone_number=phone_number,
-            user_id=update.effective_user.id
-        )
-        context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text="Записал", reply_markup=ReplyKeyboardRemove()
-        )
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                    text=f"что хочешь сделать?",
+                    reply_markup=self.main_menu_keyboard()
+                )
+            self.db_adapter.update_chat_status(ChatStatus.MAIN_MENU.value,
+                    update.effective_user.id,
+                    update.effective_chat.id
+                )
+
+        except AttributeError as ex:
+            LOG.debug('Ошибка в валидации телефона', ex)
+        finally:
+                # TODO: валидировать текст номера телефона[
+
+                number = update.message.text
+                print()
+                validated_number = self.validate_phone_number(phone_number=number)
+                print()
+                if validated_number is True:
+                    self.db_adapter.update_phone_number(
+                        phone_number=number,
+                        user_id=update.effective_user.id
+                    )
+                    context.bot.send_message(
+                        chat_id=update.effective_chat.id,
+                        text="Записал", reply_markup=ReplyKeyboardRemove()
+                    )
+                    print()
+                    context.bot.send_message(chat_id=update.effective_chat.id,
+                        text=f"что хочешь сделать?",
+                        reply_markup=self.main_menu_keyboard()
+                    )
+                    self.db_adapter.update_chat_status(ChatStatus.MAIN_MENU.value,
+                        update.effective_user.id,
+                        update.effective_chat.id
+                    )
+                elif validated_number is False:
+                    context.bot.send_message(chat_id=update.effective_chat.id,
+                                             text=f"Ты можешь отсавить имя в телеграмм или исправить номер телефона"
+                    )
+                    print()
+
+
 
     def validate_price(self, text):
         template_digit = '\d+'
@@ -1214,9 +1299,12 @@ class ChatBot:
 
     @classmethod
     def keyboard_contact(cls, update):
-        button = [[KeyboardButton('Отправить контакт', request_contact=True)]]
-        markup_contact = ReplyKeyboardMarkup(button, one_time_keyboard=True, row_width=1, resize_keyboard=True)
+        phone = KeyboardButton(UserOffersActionsRequests.SEND_PHONE_NUMBER.value, request_contact=True)
+        telegram = KeyboardButton(UserOffersActionsRequests.SEND_TELEGAMM_NAME.value)
+        bottom_list = [[phone], [telegram]]
+        markup_contact = ReplyKeyboardMarkup(bottom_list, one_time_keyboard=True, row_width=1, resize_keyboard=True)
         update.message.reply_text('Нажми на кнопку, чтобы отправить контакт', reply_markup=markup_contact)
+
 
     @classmethod
     def main_menu_keyboard(cls):

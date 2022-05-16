@@ -6,3 +6,5 @@ sequence/
 tests/**/__pycache__
 api-redoc.html
 .env
+
+file_for_testing.py

@@ -93,6 +93,19 @@ class DBAdapter:  # responsible for Users and Chats
         except(Exception, Error) as e:
             LOG.error("Ошибка при обновление телефонного номера:", e)
 
+    def update_telegram_name(self, telegram_name, user_id):
+        try:
+            update_query = f"""
+                UPDATE users SET "telegram_name" = '{telegram_name}'
+                WHERE user_id = {user_id};
+                """
+            self.execute(update_query)
+            LOG.debug(f"Имя пользователя в ТГ изменено на {telegram_name}")
+        except(Exception, Error) as e:
+            LOG.error("Ошибка при обновление имени в телеграм:", e)
+
+
+
     def change_nick(self):
         pass
 
@@ -240,6 +253,7 @@ class DBAdapter:  # responsible for Users and Chats
             data['destination_city'] = result[4]
             data['price'] = result[5]
             data_list.append(data)
+            print()
             return data_list[0]
         except(Exception, Error) as e:
             LOG.error("Ошибка при получении фильтра:", e)
@@ -570,8 +584,11 @@ class GiveOffer(DBAdapter):
 
 class OfferFilter(BaseModel):
     departure_city: str
-    destination_country: str
     departure_country: Optional[str] = None
+    destination_city: str
+    destination_country: Optional[str] = None
+
+
 
 
 class ShowOffers(DBAdapter):
@@ -605,7 +622,7 @@ class ShowOffers(DBAdapter):
                     FROM packages as p
                     LEFT JOIN public.users as u on u.user_id = p.custumer_user_id
                     WHERE status = 'created' and departure_city ='{filters.departure_city}'
-                    and  destination_country = '{filters.destination_country}' 
+                    and  destination_city = '{filters.destination_city}' 
                     ORDER BY package_id
                     LIMIT 1 
     """
@@ -629,7 +646,7 @@ class ShowOffers(DBAdapter):
                     LEFT JOIN public.users as u on u.user_id = p.custumer_user_id
                     WHERE status = 'created' AND 
                     departure_city ='{filters.departure_city}' AND 
-                    destination_country = '{filters.destination_country}' AND 
+                    destination_city = '{filters.destination_city}' AND 
                     package_id > {package_id}
                     
                     ORDER BY package_id
@@ -653,7 +670,7 @@ class ShowOffers(DBAdapter):
             data['destination_city'] = rows[7]
             data['price'] = rows[8]
             data_list.append(data)
-
+            print()
             data = data_list[0]
             return data
         except(Exception, Error) as e:
