@@ -1,5 +1,5 @@
-import phonenumbers
 import enchant
+import random
 import difflib
 import logging
 import re
@@ -16,6 +16,7 @@ from telegram.ext import Updater
 from db.db_connectors import (
     ShowOffers, DBAdapter, GiveOffer, OffersInWork, OfferFilter, OfferWorkFilter
 )
+from string import ascii_letters
 from logs import init_logging
 from secrets import SECRETS
 from telegramcalendar import calendar
@@ -81,6 +82,7 @@ class ChatStatus(int, Enum):
     TRAVALER_DESTANATION_CITY = 7
     TRAVALER_SHOW_OFFERS = 8
     SHOW_OFFERS = 9
+    USER_INTERATION_WITH_HIM_OFFERS = 10
     TRAVALER_CHOSE_STEP = 11
     TAKE_DEPARTURE_CITY = 12
     TAKE_DISTANATION_CITY = 13
@@ -115,6 +117,9 @@ class ChatStatus(int, Enum):
     # статусы изменения информации о пути Оппортунити
     CHANGE_TRAVELER_DESTINATION_CITY = 34
     CHANGE_TRAVELER_DEPARTURE_CITY = 35
+
+    #статусы ошибки
+    WORD_NOT_IN_RUSSIAN = 36
 
 
 
@@ -193,6 +198,21 @@ class ChatBot:
 
         self.check_place_name = LocationValidation()
 
+    def command_start(self, update: Update):
+        if update.message.text == '/start':
+            update.message.reply_text(
+                'Привет, меня зовут бот. Я соединяю людей и товары по всему миру.')
+            update.message.reply_text(
+                'Что ты хочешь сделать?', reply_markup=self.main_menu_keyboard())
+            self.db_adapter.update_chat_status(
+                ChatStatus.MAIN_MENU.value,
+                update.effective_user.id,
+                update.effective_chat.id
+            )
+
+        else:
+            pass
+
     def start(self):
         self.updater.start_polling()
 
@@ -203,7 +223,77 @@ class ChatBot:
             except psycopg2.Error as ex:
                 LOG.error("Failed to close db connector %s: %s", connector, ex)
 
+    def write_telegram_name(self, update):
+        tg_name = update.effective_user.name
+        self.db_adapter.update_telegram_name(tg_name, update.effective_user.id)
+
+    def write_user_tg_link(self,update):
+        tg_link = update.effective_user.link
+        self.db_adapter.update_telegram_link(tg_link, update.effective_user.id)
+
+    def check_phone_number(self):
+        pass
+
+    def show_price_recomendation(self, curency='RUB'):
+
+        x = 1
+        if curency == 'USD':
+            x = 65
+        elif curency == 'EUR':
+            x = 65
+        elif curency == 'TRY':
+            x = 3
+
+        header = '<strong>Сколько мне платить за доставку?</strong>'
+        text = 'Сейчас мы только пробуем делать первые доставки и' \
+               'оценка стоимости приблизельная и основывается только на личном ' \
+               'опыте и опыте тех кто уже отправлял посылки. ' \
+               'Дальше будет список самых распросранненых типов посылко и примерная вилка ценв которую можно отдать за доставку' \
+               'но так же Вы можете сами предложить свою цену'
+        price_dict = f''' 
+&#128193 Документы <u>от {round(1000/x)}до {round(2000/x)} {curency}</u>  &#128181 
+<i>Банковские карточки, документы формата А4, прочие личные документы.</i> 
+
+&#128138 Лекарства: <u> от {round(1500/x)} до {round(2000/x)} {curency}</u>	&#128181
+
+&#128187 Электроника:
+Малогаборитная <u> от {round(3000/x)} до {round(7000/x)} {curency} </u>  &#128181
+<i>мобильный телефон, планшеты, плеер, электоронные часы, электоронные книжки, акумуляторы </i> 
+Среднегаборитная <u>  от {round(5000/x)} до {round(10000/x)} {curency}</u>  &#128181
+<i>Ноутбук и все что похоже по примерно по размерам на обувную коробку 40×10×20 см </i>
+      
+&#128092 Личные Вещи:            
+Маленькая сумочка <u>  от {round(2000/x)} до {round(3000/x)} {curency} </u>   &#128181
+<i>Похажа по размерам на кошелек или пенал </i>
+Средняя сумка <u> от {round(3000/x)} до {round(6000/x)} {curency}</u>  &#128181
+<i>55×40×20 см по длине, ширине и высоте </i>
+<i>или 115 см по сумме трех измерений. </i>
+<i>вес до 3 кг </i> 
+Большой чемодан <u> от {round(6000/x)} {curency} и выше</u>  &#128181
+<i>Полноценный дополнитлльный багаж </i>
+<i>вес от 6 до 19 кг </i>
+<i>такой багаж оплачивается отдельно в соотсветвсии со стоимостью провоза дополнительного багажа
+стоимость можно <a href="https://www.tourister.ru/publications/576"> посмотреть тут </a></i>
+'''
+
+        show_text = f'{header}\n\n{text}\n{price_dict}'
+        return show_text
+
+    def show_travelers_amount(self):
+        count = self.db_adapter.get_traveler_amaunt()
+        lie = count + random.randint(1000, 2000)
+        return lie
+    def is_word_on_russian(self, text):
+        list_of_true = list(map(lambda i: i in ascii_letters, text))
+        if True in list_of_true:
+            return False
+
+    # def validate_latin_text(self):
+
+
+
     def show_offers(self, update: Update, context: CallbackContext):
+
         filters_params = self.db_adapter.get_filter(update.effective_user.id)
         filters = OfferFilter(
             departure_city=filters_params['departure_city'],
@@ -223,16 +313,21 @@ class ChatBot:
                 self.offers.previous_shown_offer(update.effective_user.id, package_id)
             else:
                 context.bot.send_message(chat_id=update.effective_chat.id,
-                                         text=f"Ты посмотрел все новые заказы. сейчас будут по второму кругу")
+                                         text=f"Ты посмотрел все новые заказы")
 
                 first_row = self.offers.get_one_row(filters=filters)
-                row_dict = self.offers.query_to_dict(first_row)
-                self.offers.previous_shown_offer(update.effective_user.id, row_dict['package_id'])
+                if first_row is not None:
+                    row_dict = self.offers.query_to_dict(first_row)
+                    self.offers.previous_shown_offer(update.effective_user.id, row_dict['package_id'])
+                else:
+                    context.bot.send_message(chat_id=update.effective_chat.id,
+                                             text=f"Больше нет посылок которые можно взять, но когда они появятся я тебе обязательно сообщу")
+
 
         elif update.message.text == UserOffersActionsRequests.SHOW_MY_OFFERS.value:
             context.bot.send_message(chat_id=update.effective_chat.id,
                                      text=f"Что ты хочешь посмотреть", reply_markup=self.my_work())
-            self.db_adapter.update_chat_status(10, update.effective_user.id, update.effective_chat.id)
+            self.db_adapter.update_chat_status(ChatStatus.USER_INTERATION_WITH_HIM_OFFERS.value, update.effective_user.id, update.effective_chat.id)
 
         elif update.message.text == UserOffersActionsRequests.BACK_TO_MAIN_MENU.value:
             self.db_adapter.update_chat_status(5, update.effective_user.id, update.effective_chat.id)
@@ -241,6 +336,7 @@ class ChatBot:
                                      reply_markup=self.main_menu_keyboard())
 
     def message_handler(self, update: Update, context: CallbackContext):
+
         chat_id = update.effective_chat.id
         user_id = update.effective_user.id
 
@@ -252,6 +348,10 @@ class ChatBot:
             )
             user = self.db_adapter.get_user(user_id)
             LOG.debug(f"Created new user: {user}")
+            self.write_telegram_name(update)
+            LOG.debug(f"Telegram name is writen : {update.effective_user.name}")
+            self.write_user_tg_link(update)
+            LOG.debug(f"Telegram link is witen : {update.effective_user.link}")
 
         chat = self.db_adapter.get_chat(chat_id)
         if chat is None:
@@ -303,7 +403,7 @@ class ChatBot:
             if update.message.text == UserActionRequest.FIND_OFFER.value:
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"{'С какого города поедешь?'}", reply_markup=ReplyKeyboardRemove())
-                self.db_adapter.update_chat_status(6, update.effective_user.id, update.effective_chat.id)
+                self.db_adapter.update_chat_status(ChatStatus.TAKE_DEPARTURE_CITY.value, update.effective_user.id, update.effective_chat.id)
 
 
             elif update.message.text == UserActionRequest.GIVE_OFFER.value:
@@ -313,84 +413,74 @@ class ChatBot:
                                          reply_markup=ReplyKeyboardRemove())
                 self.db_adapter.update_chat_status(ChatStatus.TAKE_DEPARTURE_CITY.value, update.effective_user.id,
                                                    update.effective_chat.id)
-            elif update.message.text == UserActionRequest.GIVE_RUTE.value:
-                pass
+
 
         elif chat_status == ChatStatus.TRAVALER_DEPARTURE_CITY.value:
-            check_city = self.check_place_name.city_validate(update.message.text)
-            if check_city is None:
-                self.db_adapter.update_filter('departure_city', update.message.text, update.effective_user.id)
+            if self.is_word_on_russian(update.message.text) is False:
                 context.bot.send_message(chat_id=update.effective_chat.id,
-                                         text=f"В какой город поедешь?")
-                self.db_adapter.update_chat_status(ChatStatus.TRAVALER_DESTANATION_CITY.value,
-                                                   update.effective_user.id,
-                                                   update.effective_chat.id)
+                                         text=f"Напиши пожалуйста текст на русском языке")
+
             else:
-                sugestion = check_city['sugestion']
-                others = check_city['other_variants']
-                context.bot.send_message(chat_id=update.effective_chat.id,
-                                         text=f"Воможно ты имел/ла в виду этот город:",
-                                         reply_markup= self.inline_menu_one_place(sugestion))
-                if len(others) > 1:
+                check_city = self.check_place_name.city_validate(update.message.text)
+                if check_city is None:
+                    self.db_adapter.update_filter('departure_city', update.message.text, update.effective_user.id)
                     context.bot.send_message(chat_id=update.effective_chat.id,
-                                             text=f"Или вот другие варианты",
-                                             reply_markup=self.inline_menu_other_place(others))
+                                             text=f"В какой город поедешь?")
+                    self.db_adapter.update_chat_status(ChatStatus.TRAVALER_DESTANATION_CITY.value,
+                                                       update.effective_user.id,
+                                                       update.effective_chat.id)
+                else:
+                    sugestion = check_city['sugestion']
+                    others = check_city['other_variants']
+                    context.bot.send_message(chat_id=update.effective_chat.id,
+                                             text=f"Воможно ты имел/ла в виду этот город:",
+                                             reply_markup= self.inline_menu_one_place(sugestion))
+                    if len(others) > 1:
+                        context.bot.send_message(chat_id=update.effective_chat.id,
+                                                 text=f"Или вот другие варианты",
+                                                 reply_markup=self.inline_menu_other_place(others))
 
 
 
         elif chat_status == ChatStatus.TRAVALER_DESTANATION_CITY.value:
-
-
-            filter_param = self.db_adapter.get_filter(update.effective_user.id)
-
-            check_city = self.check_place_name.city_validate(update.message.text)
-            if check_city is None:
-                self.db_adapter.update_filter('destination_city', update.message.text, update.effective_user.id)
+            if self.is_word_on_russian(update.message.text) is False:
                 context.bot.send_message(chat_id=update.effective_chat.id,
-                                         text=f"Показать все заказы из города: {filter_param['departure_city']} "
-                                              f"которые нужно доставить в город {filter_param['destination_city']}\n "
-                                              f"все верно ?",
-                                         reply_markup=self.keyboard_boolean())
+                                         text=f"Напиши пожалуйста текст на русском языке")
 
-                self.db_adapter.update_chat_status(ChatStatus.TRAVALER_SHOW_OFFERS.value, update.effective_user.id,
-                                                   update.effective_chat.id)
             else:
-                sugestion = check_city['sugestion']
-                others = check_city['other_variants']
-                context.bot.send_message(chat_id=update.effective_chat.id,
-                                         text=f"Воможно ты имел/ла в виду этот город:",
-                                         reply_markup=self.inline_menu_one_place(sugestion))
-                if len(others) > 1:
+                check_city = self.check_place_name.city_validate(update.message.text)
+                if check_city is None:
+                    self.db_adapter.update_filter('destination_city', update.message.text, update.effective_user.id)
+                    filter_param = self.db_adapter.get_filter(update.effective_user.id)
                     context.bot.send_message(chat_id=update.effective_chat.id,
-                                             text=f"Или вот другие варианты",
-                                             reply_markup=self.inline_menu_other_place(others))
+                                             text=f"Показать все заказы из города: {filter_param['departure_city']} "
+                                                  f"которые нужно доставить в город {filter_param['destination_city']}\n "
+                                                  f"все верно ?",
+                                             reply_markup=self.keyboard_boolean())
+                    self.db_adapter.update_chat_status(ChatStatus.TRAVALER_SHOW_OFFERS.value, update.effective_user.id,
+                                                       update.effective_chat.id)
+                else:
+                    sugestion = check_city['sugestion']
+                    others = check_city['other_variants']
+                    context.bot.send_message(chat_id=update.effective_chat.id,
+                                             text=f"Воможно ты имел/ла в виду этот город:",
+                                             reply_markup=self.inline_menu_one_place(sugestion))
+                    if len(others) > 1:
+                        context.bot.send_message(chat_id=update.effective_chat.id,
+                                                 text=f"Или вот другие варианты",
+                                                 reply_markup=self.inline_menu_other_place(others))
 
-                self.db_adapter.update_chat_status(ChatStatus.CHECK_TRAVELER_ANSWER.value, update.effective_user.id,
-                                                   update.effective_chat.id)
-
-        elif chat_status == ChatStatus.CHECK_TRAVELER_ANSWER.value:
-            filter_param = self.db_adapter.get_filter(update.effective_user.id)
-            answer = update.message.text
-            self.db_adapter.update_filter('destination_city', answer, update.effective_user.id)
-            context.bot.send_message(chat_id=update.effective_chat.id,
-                                     text=f"Показать все заказы из города: {filter_param['departure_city']} "
-                                          f"которые нужно доставить в город {filter_param['destination_city']}\n "
-                                          f"все верно ?",
-                                     reply_markup=self.keyboard_boolean())
-
-            self.db_adapter.update_chat_status(ChatStatus.TRAVALER_SHOW_OFFERS.value, update.effective_user.id,
-                                               update.effective_chat.id)
 
         elif chat_status == ChatStatus.TRAVALER_SHOW_OFFERS.value:
             if update.message.text == "Да":
+
                 filters_params = self.db_adapter.get_filter(update.effective_user.id)
-                print()
+
                 filters = OfferFilter(
                     departure_city=filters_params['departure_city'],
                     destination_city=filters_params['destination_city']
                 )
                 offer = self.offers.get_one_row(filters=filters)
-                print()
 
                 if offer is not None:
                     offer_as_dict: dict = self.offers.query_to_dict(offer)
@@ -423,7 +513,8 @@ class ChatBot:
 
         elif chat_status == ChatStatus.SHOW_OFFERS:
             self.show_offers(update=update, context=context)
-        elif chat_status == 10:
+
+        elif chat_status == ChatStatus.USER_INTERATION_WITH_HIM_OFFERS.value:
             if update.message.text == UserOffersActionsRequests.OFFER_IN_PROGRESS.value:
                 if self.db_adapter.get_my_offers(update.effective_user.id):
                     for offer in self.db_adapter.get_my_offers(update.effective_user.id):
@@ -436,12 +527,17 @@ class ChatBot:
                                              text=f"Нету заказов в работе")
 
             elif update.message.text == UserOffersActionsRequests.DONE_OFFERS.value:
-                finished_offers = self.db_adapter.get_finished_offers()
-                for offer in finished_offers:
-                    query_dict = self.db_adapter.query_to_dict_finishd_orders(offer)
-                    text = self.data_from_dict_to_text_finished_orders(query_dict)
+                finished_offers = self.db_adapter.get_finished_offers(update.effective_user.id)
+
+                if len(finished_offers) > 0:
+                    for offer in finished_offers:
+                        query_dict = self.db_adapter.query_to_dict_finishd_orders(offer)
+                        text = self.data_from_dict_to_text_finished_orders(query_dict)
+                        context.bot.send_message(chat_id=update.effective_chat.id,
+                                                text=f"{text}")
+                else:
                     context.bot.send_message(chat_id=update.effective_chat.id,
-                                             text=f"{text}")
+                                             text=f"у тебя нету завершенных заказов")
             elif update.message.text == UserOffersActionsRequests.BACK_TO_NEW_OFFERS.value:
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"Жми кнопку 'Следующий закз "
@@ -473,6 +569,8 @@ class ChatBot:
                                                    update.effective_chat.id)
 
             elif update.message.text == UserActionRequest.CHANGE_DESTINATION_CITY.value:
+
+
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"В какой город поедешь?''",
                                          reply_markup=ReplyKeyboardRemove())
@@ -510,9 +608,7 @@ class ChatBot:
                                                    update.effective_chat.id)
 
         elif chat_status == ChatStatus.CHANGE_TRAVELER_DESTINATION_CITY.value:
-
             filter_param = self.db_adapter.get_filter(update.effective_user.id)
-
             check_city = self.check_place_name.city_validate(update.message.text)
             if check_city is None:
                 self.db_adapter.update_filter('destination_city', update.message.text, update.effective_user.id)
@@ -541,50 +637,55 @@ class ChatBot:
 
 
         elif chat_status == ChatStatus.TAKE_DEPARTURE_CITY.value:
-            city = update.message.text
-            self.give_data.write_departure_city(city, update.effective_user.id)
-            context.bot.send_message(chat_id=update.effective_chat.id,
-                                     text=f"{'В какой город нужно привезти посылку?'}")
-
-            check_city = self.check_place_name.city_validate(update.message.text)
-            if check_city is None:
-                self.give_data.write_departure_city(city, update.effective_user.id)
-
-                self.db_adapter.update_chat_status(ChatStatus.TAKE_DISTANATION_CITY.value, update.effective_user.id,
-                                                   update.effective_chat.id)
-            else:
-                sugestion = check_city['sugestion']
-                others = check_city['other_variants']
+            if self.is_word_on_russian(update.message.text) is False:
                 context.bot.send_message(chat_id=update.effective_chat.id,
-                                         text=f"Воможно ты имел/ла в виду этот город:",
-                                         reply_markup=self.inline_menu_one_place(sugestion))
-                if len(others) > 1:
+                                         text=f"Напиши пожалуйста текст на русском языке")
+            else:
+                city = update.message.text
+                self.give_data.write_departure_city(city, update.effective_user.id)
+                check_city = self.check_place_name.city_validate(update.message.text)
+                if check_city is None:
+                    self.give_data.write_departure_city(city, update.effective_user.id)
                     context.bot.send_message(chat_id=update.effective_chat.id,
-                                             text=f"Или вот другие варианты",
-                                             reply_markup=self.inline_menu_other_place(others))
+                                             text=f"{'В какой город нужно привезти посылку?'}")
+                    self.db_adapter.update_chat_status(ChatStatus.TAKE_DISTANATION_CITY.value, update.effective_user.id,
+                                                       update.effective_chat.id)
+                else:
+                    sugestion = check_city['sugestion']
+                    others = check_city['other_variants']
+                    context.bot.send_message(chat_id=update.effective_chat.id,
+                                             text=f"Воможно ты имел/ла в виду этот город:",
+                                             reply_markup=self.inline_menu_one_place(sugestion))
+                    if len(others) > 1:
+                        context.bot.send_message(chat_id=update.effective_chat.id,
+                                                 text=f"Или вот другие варианты",
+                                                 reply_markup=self.inline_menu_other_place(others))
 
         elif chat_status == ChatStatus.TAKE_DISTANATION_CITY.value:
-
-            city = update.message.text
-
-            check_city = self.check_place_name.city_validate(update.message.text)
-            if check_city is None:
-                self.give_data.write_destination_city(city, update.effective_user.id)
+            if self.is_word_on_russian(update.message.text) is False:
                 context.bot.send_message(chat_id=update.effective_chat.id,
-                                         text=f"Когда хочешь отправить посылку?",
-                                         reply_markup=self.chose_date_keyboard())
-                self.db_adapter.update_chat_status(ChatStatus.DATA_OF_DEPARTURE.value, update.effective_user.id,
-                                                   update.effective_chat.id)
+                                         text=f"Напиши пожалуйста текст на русском языке")
             else:
-                sugestion = check_city['sugestion']
-                others = check_city['other_variants']
-                context.bot.send_message(chat_id=update.effective_chat.id,
-                                         text=f"Воможно ты имел/ла в виду этот город:",
-                                         reply_markup=self.inline_menu_one_place(sugestion))
-                if len(others) > 1:
+                city = update.message.text
+
+                check_city = self.check_place_name.city_validate(update.message.text)
+                if check_city is None:
+                    self.give_data.write_destination_city(city, update.effective_user.id)
                     context.bot.send_message(chat_id=update.effective_chat.id,
-                                             text=f"Или вот другие варианты",
-                                             reply_markup=self.inline_menu_other_place(others))
+                                             text=f"Когда хочешь отправить посылку?",
+                                             reply_markup=self.chose_date_keyboard())
+                    self.db_adapter.update_chat_status(ChatStatus.DATA_OF_DEPARTURE.value, update.effective_user.id,
+                                                       update.effective_chat.id)
+                else:
+                    sugestion = check_city['sugestion']
+                    others = check_city['other_variants']
+                    context.bot.send_message(chat_id=update.effective_chat.id,
+                                             text=f"Воможно ты имел/ла в виду этот город:",
+                                             reply_markup=self.inline_menu_one_place(sugestion))
+                    if len(others) > 1:
+                        context.bot.send_message(chat_id=update.effective_chat.id,
+                                                 text=f"Или вот другие варианты",
+                                                 reply_markup=self.inline_menu_other_place(others))
 
 
 
@@ -655,13 +756,22 @@ class ChatBot:
                                          text=f"Выбери дату:",
                                          reply_markup=calendar.create_calendar())
         elif chat_status == ChatStatus.TITLE.value:
-            title = update.message.text
-            self.give_data.write_title(title, update.effective_user.id)
-            context.bot.send_message(chat_id=update.effective_chat.id,
-                                     text='Сколько готов заплатить?'
-                                     )
-            self.db_adapter.update_chat_status(ChatStatus.PRICE.value, update.effective_user.id,
-                                               update.effective_chat.id)
+            if self.is_word_on_russian(update.message.text) is False:
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"Напиши пожалуйста текст на русском языке")
+            else:
+                title = update.message.text
+                self.give_data.write_title(title, update.effective_user.id)
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f'{self.show_price_recomendation("USD")}',
+                                         parse_mode='HTML',
+                                         disable_web_page_preview=True
+                                         )
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text='Напиши в долларах сколько готово заплатить за доставку'
+                                         )
+                self.db_adapter.update_chat_status(ChatStatus.PRICE.value, update.effective_user.id,
+                                                   update.effective_chat.id)
         elif chat_status == ChatStatus.PRICE.value:
             price_text = update.message.text
             price = self.validate_price(price_text)
@@ -681,7 +791,8 @@ class ChatBot:
             text = self.give_data.show_writen_data_to_user()
             context.bot.send_message(chat_id=update.effective_chat.id,
                                      text=f"{text}",
-                                     reply_markup=self.keyboard_boolean()
+                                     reply_markup=self.keyboard_boolean(),
+                                     parse_mode='HTML'
                                      )
             self.db_adapter.update_chat_status(ChatStatus.ACECEPTED.value, update.effective_user.id,
                                                update.effective_chat.id)
@@ -689,8 +800,16 @@ class ChatBot:
             replay = update.message.text
             if replay == 'Да':
                 context.bot.send_message(chat_id=update.effective_chat.id,
-                                         text=f"Супер, жди когда на твое объявление откликнуться",
-                                         reply_markup=self.main_menu_keyboard()
+                                         text=f"Супер, я сейчас оповещу всех кому по пути с твоей посылкой.\n "
+                                              f"На данный момент,{self.show_travelers_amount()} члеовек сказали что они путишествуют\n"
+                                              f"Ожидай ответа примерно через <i>пару часов</i>",
+                                         reply_markup=self.main_menu_keyboard(),
+                                         parse_mode='HTML'
+                                         )
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"А пока можешь оставить заявку еще на одну достаку или взятся самому за доставку",
+                                         reply_markup=self.main_menu_keyboard(),
+                                         parse_mode='HTML'
                                          )
                 self.db_adapter.update_chat_status(ChatStatus.MAIN_MENU.value, update.effective_user.id,
                                                    update.effective_chat.id)
@@ -983,18 +1102,15 @@ class ChatBot:
             self.db_adapter.update_chat_status(ChatStatus.ACECEPTED.value, update.effective_user.id,
                                                update.effective_chat.id)
 
+        elif chat_status == ChatStatus.WORD_NOT_IN_RUSSIAN.value:
 
-    def command_start(self, update: Update):
-        if update.message.text == '/start':
-            update.message.reply_text(
-                'Привет, меня зовут бот. Я соединяю людей и товары по всему миру.\n Давай с тобой познакомимся')
-            self.db_adapter.update_chat_status(
-                ChatStatus.ASK_USER_NAME.value,
-                update.effective_user.id,
-                update.effective_chat.id
-            )
-        else:
-            pass
+            self.db_adapter.update_chat_status(new_status=self.db_adapter.get_previous_chat_status(update.effective_user.id),
+                                               user_id=update.effective_user.id,
+                                               chat_id=update.effective_chat.id,
+                                               prev_status= ChatStatus.WORD_NOT_IN_RUSSIAN.value,
+                                               answer=update.message.text
+                                               )
+
 
     def callback_handler(self, update: Update, context: CallbackContext):
         chat_status = self.db_adapter.get_chat_status(update.effective_chat.id)
@@ -1043,6 +1159,21 @@ class ChatBot:
             self.db_adapter.update_chat_status(ChatStatus.TRAVALER_DESTANATION_CITY.value,
                                                update.effective_user.id,
                                                update.effective_chat.id)
+
+        elif chat_status == ChatStatus.TRAVALER_DESTANATION_CITY.value:
+            query = update.callback_query
+            city = query.data
+            self.db_adapter.update_filter('destination_city', city, update.effective_user.id)
+            filter_param = self.db_adapter.get_filter(update.effective_user.id)
+            context.bot.send_message(chat_id=update.effective_chat.id,
+                                     text=f"Показать все заказы из города: {filter_param['departure_city']} "
+                                          f"которые нужно доставить в город {filter_param['destination_city']}\n "
+                                          f"все верно ?",
+                                     reply_markup=self.keyboard_boolean())
+            self.db_adapter.update_chat_status(ChatStatus.TRAVALER_SHOW_OFFERS.value, update.effective_user.id,
+                                               update.effective_chat.id)
+
+
         elif chat_status == ChatStatus.CHANGE_TRAVELER_DEPARTURE_CITY.value:
             query = update.callback_query
             city = query.data
@@ -1052,7 +1183,7 @@ class ChatBot:
             self.db_adapter.update_chat_status(ChatStatus.TRAVALER_SHOW_OFFERS.value,
                                                update.effective_user.id,
                                                update.effective_chat.id)
-        elif chat_status == ChatStatus.CHECK_TRAVELER_ANSWER.value or chat_status == ChatStatus.CHANGE_TRAVELER_DESTINATION_CITY.value:
+        elif chat_status == ChatStatus.CHECK_TRAVELER_ANSWER.value:
 
             query = update.callback_query
             city = query.data
@@ -1112,14 +1243,15 @@ class ChatBot:
             name = user[1]
             phone = user[4]
             tg_name = user[7]
+            tg_link = user[8]
             print()
             check_tuple = (update.effective_user.id, offer_user_id, package_id)
 
             if self.offers_in_work.check_working(filters=filters) != check_tuple:
 
-                context.bot.send_contact(update.effective_chat.id, phone, name,
-                                         )
-                context.bot.send_message(update.effective_chat.id, text=f"{tg_name}")
+                # context.bot.send_contact(update.effective_chat.id, phone, name,
+                #                          )
+                context.bot.send_message(update.effective_chat.id, text=f"{tg_link}")
 
                 self.offers_in_work.star_work(filters=filters)
             else:

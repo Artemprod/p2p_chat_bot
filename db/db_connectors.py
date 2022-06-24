@@ -93,6 +93,19 @@ class DBAdapter:  # responsible for Users and Chats
         except(Exception, Error) as e:
             LOG.error("Ошибка при обновление телефонного номера:", e)
 
+    def get_telegramm_name(self, user_id):
+        try:
+            query = f"""
+                SELECT	
+                    telegram_name 
+                FROM public.users
+                WHERE user_id = {user_id};
+                        """
+            result = self.fetch_one(query)
+            return result
+        except(Exception, Error) as e:
+            LOG.debug(f"Выдача имени телеграмм", e)
+
     def update_telegram_name(self, telegram_name, user_id):
         try:
             update_query = f"""
@@ -104,12 +117,21 @@ class DBAdapter:  # responsible for Users and Chats
         except(Exception, Error) as e:
             LOG.error("Ошибка при обновление имени в телеграм:", e)
 
-
+    def update_telegram_link(self, tg_link, user_id):
+        try:
+            update_query = f"""
+                UPDATE users SET "tg_link" = '{tg_link}'
+                WHERE user_id = {user_id};
+                """
+            self.execute(update_query)
+            LOG.debug(f"Ссылка на пользователя {tg_link}")
+        except(Exception, Error) as e:
+            LOG.error("Ошибка при сохранения ссылки пользователя:", e)
 
     def change_nick(self):
         pass
 
-    def get_user(self, user_id) -> dict:
+    def get_user(self, user_id):
         try:
             select_query = f"""
             SELECT * 
@@ -178,10 +200,10 @@ class DBAdapter:  # responsible for Users and Chats
         except(Exception, Error) as e:
             LOG.error("Ошибка при получении данных о заказах :", e)
 
-    def update_chat_status(self, new_status, user_id, chat_id):
+    def update_chat_status(self, new_status, user_id, chat_id,answer = 'Lorem', prev_status=0):
         try:
             update_chat_query = f"""
-            UPDATE user_chat SET "ChatStatus" = {new_status}
+            UPDATE user_chat SET "ChatStatus" = {new_status}, previous_status = {prev_status}, "LastAnswer " = '{answer}'
             WHERE chat_id = {chat_id} AND user_id = {user_id};
             """
             self.execute(update_chat_query)
@@ -314,7 +336,7 @@ class DBAdapter:  # responsible for Users and Chats
         except(Exception, Error) as e:
             LOG.debug('Ошибка получения всех оферов в работе', e)
 
-    def get_finished_offers(self):
+    def get_finished_offers(self, executor_id):
         try:
             query = f"""
             SELECT 
@@ -332,8 +354,8 @@ class DBAdapter:  # responsible for Users and Chats
                         FROM packages as p
 
                 JOIN public.orders as o on o.package_id = p.package_id 
-                JOIN public.users as u on u.user_id = o.executor_id 
-                WHERE executor_id = 301213126 and o.status = 'done'
+                JOIN public.users as u on u.user_id = o.costumer_id
+                WHERE executor_id = {executor_id} and o.status = 'done'
 """
             result = self.fetchall(query)
             print(result)
@@ -388,6 +410,30 @@ class DBAdapter:  # responsible for Users and Chats
         except(Exception, Error) as e:
             print('Ошибка в конвертирование даных заказов ', e)
 
+    def get_traveler_amaunt(self):
+        try:
+            query = f"""
+                    select count(*) from offers_filtr 
+        """
+            result = self.fetch_one(query)[0]
+
+            return result
+        except(Exception, Error) as e:
+            LOG.debug('Ошибка в выдаче количесвта путишественников', e)
+
+    def get_previous_chat_status(self, user_id):
+        try:
+            query = f"""
+                    SELECT
+                        previous_status
+                    FROM  user_chat 
+                    WHERE user_id = {user_id}
+        """
+            result = self.fetch_one(query)[0]
+
+            return result
+        except(Exception, Error) as e:
+            LOG.debug('Ошибка в выдаче предыдущего чат статуса', e)
 
 class GiveOffer(DBAdapter):
     def __init__(self, user, password, host, port, database, callback_data=None):
@@ -555,17 +601,19 @@ class GiveOffer(DBAdapter):
         data = data_list[0]
 
         text = f"""                              
-            Что что отправляем: {data['title']}        
-            Кто заказчик: {data['user_name']}           
-            Откуда забрать                         
-                        Страна: {data['departure_country']}  
-                        Город:  {data['departure_city']}     
-            Куда привезти                           
-                        Страна: {data['destination_country']}
-                        Город:  {data['destination_city']}   
-            Сколько готов заплатить: {data['price']} рублей        
-            Описание: {data['description']}          
-            Когда когда нужно забрать  {data['despatch_date']}
+<b>Информация которую ты заполнил:</b>
+
+Что что отправляем:<i> {data['title']}</i>        
+Кто заказчик:<i> {data['user_name']}</i>           
+Откуда забрать                         
+    Страна: <i>{data['departure_country']} </i> 
+    Город: <i> {data['departure_city']}</i>     
+Куда привезти                           
+    Страна:<i> {data['destination_country']}</i>
+    Город: <i> {data['destination_city']} </i>  
+Сколько готов заплатить:<i> {data['price']}$</i>       
+Описание: <i>{data['description']} </i>         
+Когда когда нужно забрать <i> {data['despatch_date']}</i>
             """
         return text
 
@@ -587,8 +635,6 @@ class OfferFilter(BaseModel):
     departure_country: Optional[str] = None
     destination_city: str
     destination_country: Optional[str] = None
-
-
 
 
 class ShowOffers(DBAdapter):
