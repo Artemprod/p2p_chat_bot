@@ -1,8 +1,8 @@
-psycopg2==2.9.3
+# psycopg2==2.9.3
 SQLAlchemy==1.4.36
 APScheduler==3.6.3
 async-lru==1.0.2
-pyenchant==3.2.2
+# pyenchant==3.2.2
 cached-property==1.5.2
 chardet==4.0.0
 coloredlogs==15.0.1
