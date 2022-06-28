@@ -211,38 +211,32 @@ class ChatBot:
             x = 3
 
         header = '<strong>Сколько мне платить за доставку?</strong>'
-        text = 'Сейчас мы только пробуем делать первые доставки и' \
-               'оценка стоимости приблизельная и основывается только на личном ' \
-               'опыте и опыте тех кто уже отправлял посылки. ' \
-               'Дальше будет список самых распросранненых типов посылко и примерная вилка ценв которую можно отдать за доставку' \
-               'но так же Вы можете сами предложить свою цену'
         price_dict = f''' 
 &#128193 Документы <u>от {round(1000/x)}до {round(2000/x)} {curency}</u>  &#128181 
 <i>Банковские карточки, документы формата А4, прочие личные документы.</i> 
 
-&#128138 Лекарства: <u> от {round(1500/x)} до {round(2000/x)} {curency}</u>	&#128181
+&#128138 Лекарства: <u> от {round(1500/x)} до {round(2000/x)} {curency}</u>    &#128181
 
 &#128187 Электроника:
-Малогаборитная <u> от {round(3000/x)} до {round(7000/x)} {curency} </u>  &#128181
-<i>мобильный телефон, планшеты, плеер, электоронные часы, электоронные книжки, акумуляторы </i> 
-Среднегаборитная <u>  от {round(5000/x)} до {round(10000/x)} {curency}</u>  &#128181
+Малогабаритная <u> от {round(3000/x)} до {round(7000/x)} {curency} </u>  &#128181
+<i>мобильный телефон, планшеты, плеер, электронные часы, электронные книжки, аккумуляторы </i> 
+Среднегабаритная <u>  от {round(5000/x)} до {round(10000/x)} {curency}</u>  &#128181
 <i>Ноутбук и все что похоже по примерно по размерам на обувную коробку 40×10×20 см </i>
       
 &#128092 Личные Вещи:            
 Маленькая сумочка <u>  от {round(2000/x)} до {round(3000/x)} {curency} </u>   &#128181
-<i>Похажа по размерам на кошелек или пенал </i>
+<i>Похожа по размерам на кошелек или пенал </i>
 Средняя сумка <u> от {round(3000/x)} до {round(6000/x)} {curency}</u>  &#128181
 <i>55×40×20 см по длине, ширине и высоте </i>
 <i>или 115 см по сумме трех измерений. </i>
 <i>вес до 3 кг </i> 
 Большой чемодан <u> от {round(6000/x)} {curency} и выше</u>  &#128181
-<i>Полноценный дополнитлльный багаж </i>
+<i>Полноценный дополнительный багаж </i>
 <i>вес от 6 до 19 кг </i>
-<i>такой багаж оплачивается отдельно в соотсветвсии со стоимостью провоза дополнительного багажа
-стоимость можно <a href="https://www.tourister.ru/publications/576"> посмотреть тут </a></i>
-'''
+<i>такой багаж оплачивается отдельно в соответствии со стоимостью провоза дополнительного багажа
+стоимость можно <a href="https://www.tourister.ru/publications/576"> посмотреть тут </a></i>'''
 
-        show_text = f'{header}\n\n{text}\n{price_dict}'
+        show_text = f'{header}\n\n{price_dict}'
         return show_text
 
     def show_travelers_amount(self):
@@ -292,14 +286,14 @@ class ChatBot:
 
         elif update.message.text == UserOffersActionsRequests.SHOW_MY_OFFERS.value:
             context.bot.send_message(chat_id=update.effective_chat.id,
-                                     text=f"Что ты хочешь посмотреть", reply_markup=self.my_work())
+                                     text=f"Что ты хочешь посмотреть?", reply_markup=self.my_work())
             self.db_adapter.update_chat_status(ChatStatus.USER_INTERATION_WITH_HIM_OFFERS.value,
                                                update.effective_user.id, update.effective_chat.id)
 
         elif update.message.text == UserOffersActionsRequests.BACK_TO_MAIN_MENU.value:
             self.db_adapter.update_chat_status(5, update.effective_user.id, update.effective_chat.id)
             context.bot.send_message(chat_id=update.effective_chat.id,
-                                     text=f"Что ты хочешь сделать'",
+                                     text=f"Что ты хочешь сделать?",
                                      reply_markup=self.main_menu_keyboard())
 
     def city_validate(self, city: str):
@@ -522,11 +516,11 @@ class ChatBot:
                                                 text=f"{text}",parse_mode="HTML")
                 else:
                     context.bot.send_message(chat_id=update.effective_chat.id,
-                                             text=f"у тебя нету завершенных заказов")
+                                             text=f"У тебя нету завершенных заказов")
             elif update.message.text == UserOffersActionsRequests.BACK_TO_NEW_OFFERS.value:
                 context.bot.send_message(chat_id=update.effective_chat.id,
-                                         text=f"Жми кнопку 'Следующий закз "
-                                              f"чтобы посмотреть новые заказы если они есть '",
+                                         text=f"Жми кнопку Следующий закз "
+                                              f"чтобы посмотреть новые заказы если они есть",
                                          reply_markup=self.next_previous_menu())
                 self.db_adapter.update_chat_status(9, update.effective_user.id, update.effective_chat.id)
 
@@ -534,13 +528,13 @@ class ChatBot:
                 self.db_adapter.update_chat_status(ChatStatus.MAIN_MENU.value, update.effective_user.id,
                                                    update.effective_chat.id)
                 context.bot.send_message(chat_id=update.effective_chat.id,
-                                         text=f"Что ты хочешь сделать'",
+                                         text=f"Что ты хочешь сделать?",
                                          reply_markup=self.main_menu_keyboard())
 
         elif chat_status == ChatStatus.TRAVALER_CHOSE_STEP.value:
             if update.message.text == UserOffersActionsRequests.BACK_TO_MAIN_MENU.value:
                 context.bot.send_message(chat_id=update.effective_chat.id,
-                                         text=f"Что ты хочешь сделать'",
+                                         text=f"Что ты хочешь сделать?",
                                          reply_markup=self.main_menu_keyboard())
                 self.db_adapter.update_chat_status(ChatStatus.MAIN_MENU.value, update.effective_user.id,
                                                    update.effective_chat.id)
@@ -636,7 +630,7 @@ class ChatBot:
                 if check_city is None:
                     self.give_data.write_departure_city(city, update.effective_user.id)
                     context.bot.send_message(chat_id=update.effective_chat.id,
-                                             text=f"{'В какой город нужно привезти посылку?'}")
+                                             text=f"В какой город нужно привезти посылку?")
                     self.db_adapter.update_chat_status(ChatStatus.TAKE_DISTANATION_CITY.value, update.effective_user.id,
                                                        update.effective_chat.id)
                 else:
@@ -757,7 +751,7 @@ class ChatBot:
                                          disable_web_page_preview=True
                                          )
                 context.bot.send_message(chat_id=update.effective_chat.id,
-                                         text='Напиши в долларах сколько готово заплатить за доставку'
+                                         text='Напиши в долларах сколько ты готов заплатить за доставку'
                                          )
                 self.db_adapter.update_chat_status(ChatStatus.PRICE.value, update.effective_user.id,
                                                    update.effective_chat.id)
@@ -768,7 +762,9 @@ class ChatBot:
             self.db_adapter.update_chat_status(ChatStatus.DESCRIPTION.value, update.effective_user.id,
                                                update.effective_chat.id)
             context.bot.send_message(chat_id=update.effective_chat.id,
-                                     text='Записал, напиши описание'
+                                     text=f'Записал, напиши описание своей посылки. Ее габариты, вес и особености'
+                                          f' которые нужно знать'
+
                                      )
         elif chat_status == ChatStatus.DESCRIPTION.value:
             description = update.message.text
