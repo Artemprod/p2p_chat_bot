@@ -69,6 +69,7 @@ ALTER TABLE IF EXISTS public.offers_filtr
 """
 
 users_create = """
+
 -- Table: public.users
 
 -- DROP TABLE IF EXISTS public.users;

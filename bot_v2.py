@@ -1229,6 +1229,7 @@ class ChatBot:
             query.answer()
             tg_link = self.db_adapter.get_user_tg_link(offer_user_id)
             print(user)
+
             print(tg_link)
 
             check_tuple = (update.effective_user.id, offer_user_id, package_id)
