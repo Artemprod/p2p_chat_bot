@@ -102,7 +102,9 @@ CREATE TABLE IF NOT EXISTS public.user_chat
     chat_id integer,
     user_id integer,
     "ChatStatus" integer,
-    "LastAnswer " text COLLATE pg_catalog."default"
+    "LastAnswer " text COLLATE pg_catalog."default",
+    previous_status character varying COLLATE pg_catalog."default",
+    first_lounch date
 )
 
 TABLESPACE pg_default;
