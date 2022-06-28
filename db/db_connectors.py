@@ -144,6 +144,20 @@ class DBAdapter:  # responsible for Users and Chats
         except(Exception, Error) as e:
             LOG.error("Ошибка при получение данных пользователя:", e)
 
+    def get_user_tg_link(self, user_id):
+        try:
+            select_query = f"""
+            SELECT 
+            tg_link
+            FROM users
+            WHERE user_id={user_id} 
+            """
+
+            result = self.fetch_one(select_query)[0]
+            return result
+        except(Exception, Error) as e:
+            LOG.error("Ошибка при получение данных ссылки тг:", e)
+
     def update_user_name(self, name, user_id):
         try:
             update_query = f"""

@@ -1227,11 +1227,10 @@ class ChatBot:
 
         if answer == UserOffersActionsRequests.TAKE_OFFER.value:
             query.answer()
-            name = user[1]
-            phone = user[4]
-            tg_name = user[7]
-            tg_link = user[8]
-            print()
+            tg_link = self.db_adapter.get_user_tg_link(offer_user_id)
+            print(user)
+            print(tg_link)
+
             check_tuple = (update.effective_user.id, offer_user_id, package_id)
 
             if self.offers_in_work.check_working(filters=filters) != check_tuple:
