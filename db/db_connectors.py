@@ -203,7 +203,7 @@ class DBAdapter:  # responsible for Users and Chats
     def update_chat_status(self, new_status, user_id, chat_id):
         try:
             update_chat_query = f"""
-            UPDATE user_chat SET "ChatStatus" = {new_status},
+            UPDATE user_chat SET "ChatStatus" = {new_status}
             WHERE chat_id = {chat_id} AND user_id = {user_id};
             """
             self.execute(update_chat_query)
