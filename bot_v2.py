@@ -293,7 +293,8 @@ class ChatBot:
         elif update.message.text == UserOffersActionsRequests.SHOW_MY_OFFERS.value:
             context.bot.send_message(chat_id=update.effective_chat.id,
                                      text=f"Что ты хочешь посмотреть", reply_markup=self.my_work())
-            self.db_adapter.update_chat_status(ChatStatus.USER_INTERATION_WITH_HIM_OFFERS.value, update.effective_user.id, update.effective_chat.id)
+            self.db_adapter.update_chat_status(ChatStatus.USER_INTERATION_WITH_HIM_OFFERS.value,
+                                               update.effective_user.id, update.effective_chat.id)
 
         elif update.message.text == UserOffersActionsRequests.BACK_TO_MAIN_MENU.value:
             self.db_adapter.update_chat_status(5, update.effective_user.id, update.effective_chat.id)
@@ -383,7 +384,8 @@ class ChatBot:
             if update.message.text == UserActionRequest.FIND_OFFER.value:
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"С какого города поедешь?", reply_markup=ReplyKeyboardRemove())
-                self.db_adapter.update_chat_status(ChatStatus.TRAVALER_DEPARTURE_CITY.value, update.effective_user.id, update.effective_chat.id)
+                self.db_adapter.update_chat_status(ChatStatus.TRAVALER_DEPARTURE_CITY.value,
+                                                   update.effective_user.id, update.effective_chat.id)
 
 
             elif update.message.text == UserActionRequest.GIVE_OFFER.value:
@@ -482,7 +484,8 @@ class ChatBot:
                 else:
                     context.bot.send_message(chat_id=update.effective_chat.id,
                                              text=f"Нет заказов", reply_markup=self.take_order_chose_change_menu())
-                    self.db_adapter.update_chat_status(ChatStatus.TRAVALER_CHOSE_STEP.value, update.effective_user.id, update.effective_chat.id)
+                    self.db_adapter.update_chat_status(ChatStatus.TRAVALER_CHOSE_STEP.value,
+                                                       update.effective_user.id, update.effective_chat.id)
             elif update.message.text == "Нет":
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"Что хочешь сделать?", reply_markup=self.take_order_chose_change_menu())
@@ -1092,9 +1095,8 @@ class ChatBot:
 
             self.db_adapter.update_chat_status(new_status=self.db_adapter.get_previous_chat_status(update.effective_user.id),
                                                user_id=update.effective_user.id,
-                                               chat_id=update.effective_chat.id,
-                                               prev_status= ChatStatus.WORD_NOT_IN_RUSSIAN.value,
-                                               answer=update.message.text
+                                               chat_id=update.effective_chat.id
+
                                                )
 
 
