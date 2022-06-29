@@ -120,7 +120,7 @@ class DBAdapter:  # responsible for Users and Chats
     def update_telegram_link(self, tg_link, user_id):
         try:
             update_query = f"""
-                UPDATE users SET "tg_link" = '{tg_link}'
+                UPDATE users SET tg_link = '{tg_link}'
                 WHERE user_id = {user_id};
                 """
             self.execute(update_query)
