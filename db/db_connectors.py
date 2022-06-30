@@ -165,7 +165,6 @@ class DBAdapter:  # responsible for Users and Chats
             FROM users
             WHERE user_id={user_id} 
             """
-
             result = self.fetch_one(select_query)[0]
             return result
         except(Exception, Error) as e:
