@@ -55,6 +55,11 @@ class DBAdapter:  # responsible for Users and Chats
             cursor.execute("rollback")
             self.connection.commit()
 
+    def end_transaction(self):
+        with closing(self.connection.cursor()) as cursor:
+            cursor.execute('END TRANSACTION;')
+            self.connection.commit()
+
     def fetch_one(self, query):
         with closing(self.connection.cursor()) as cursor:
             cursor.execute(query)
@@ -125,13 +130,16 @@ class DBAdapter:  # responsible for Users and Chats
     def update_telegram_link(self, tg_link, user_id):
         try:
             update_query = f"""
-                UPDATE users SET "tg_link" = '{tg_link}'
+                UPDATE users SET "Link" = '{tg_link}'
                 WHERE user_id = {user_id};
                 """
             self.execute(update_query)
             LOG.debug(f"Ссылка на пользователя {tg_link}")
         except(Exception, Error) as e:
             LOG.error("Ошибка при сохранения ссылки пользователя:", e)
+            self.end_transaction()
+
+
 
     def change_nick(self):
         pass
@@ -153,7 +161,7 @@ class DBAdapter:  # responsible for Users and Chats
         try:
             select_query = f"""
             SELECT 
-            "tg_link"
+            "Link"
             FROM users
             WHERE user_id={user_id} 
             """
@@ -161,7 +169,7 @@ class DBAdapter:  # responsible for Users and Chats
             result = self.fetch_one(select_query)[0]
             return result
         except(Exception, Error) as e:
-            self.rollback()
+            self.end_transaction()
             LOG.error("Ошибка при получение данных ссылки тг:", e)
 
     def update_user_name(self, name, user_id):
@@ -569,7 +577,10 @@ class GiveOffer(DBAdapter):
                 """
             self.execute(query)
         except(Exception, Error) as e:
+
             LOG.debug('Ошибка записи описания в базу посылок', e)
+        finally:
+            self.rollback()
 
     def write_price(self, price, custumer_user_id):
         try:
