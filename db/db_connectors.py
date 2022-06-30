@@ -50,6 +50,11 @@ class DBAdapter:  # responsible for Users and Chats
             cursor.execute(query)
             self.connection.commit()
 
+    def rollback(self):
+        with closing(self.connection.cursor()) as cursor:
+            cursor.execute("rollback")
+            self.connection.commit()
+
     def fetch_one(self, query):
         with closing(self.connection.cursor()) as cursor:
             cursor.execute(query)
@@ -156,6 +161,7 @@ class DBAdapter:  # responsible for Users and Chats
             result = self.fetch_one(select_query)[0]
             return result
         except(Exception, Error) as e:
+            self.rollback()
             LOG.error("Ошибка при получение данных ссылки тг:", e)
 
     def update_user_name(self, name, user_id):
@@ -574,6 +580,7 @@ class GiveOffer(DBAdapter):
                         custumer_user_id = {custumer_user_id}
                         """
             self.execute(query)
+
         except(Exception, Error) as e:
             LOG.debug('Ошибка в записи цены', e)
 

@@ -477,7 +477,9 @@ class ChatBot:
                     )
                 else:
                     context.bot.send_message(chat_id=update.effective_chat.id,
-                                             text=f"Нет заказов", reply_markup=self.take_order_chose_change_menu())
+                                             text=f"Пока что нету посылок которым с тобой по пути, "
+                                                  f"но как только они появятся я тебе обязательно сообщу"
+                                                  f"", reply_markup=self.take_order_chose_change_menu())
                     self.db_adapter.update_chat_status(ChatStatus.TRAVALER_CHOSE_STEP.value,
                                                        update.effective_user.id, update.effective_chat.id)
             elif update.message.text == "Нет":
