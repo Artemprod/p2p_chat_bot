@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS public.users
     "UserLastName" character varying(100) COLLATE pg_catalog."default",
     user_id integer NOT NULL,
     telegram_name character varying COLLATE pg_catalog."default",
-    Link character varying COLLATE pg_catalog."default",
+    "Link" character varying COLLATE pg_catalog."default",
     CONSTRAINT users_pkey PRIMARY KEY (id)
 )
 
