@@ -90,6 +90,7 @@ class DBAdapter:  # responsible for Users and Chats
             self.execute(create_user_query)
             LOG.debug(f"Пользователь {user_id} добавлен в базу")
         except(Exception, Error) as e:
+            self.end_transaction()
             LOG.error("Ошибка работы с базой:", e)
 
     def update_phone_number(self, phone_number, user_id):
@@ -101,6 +102,7 @@ class DBAdapter:  # responsible for Users and Chats
             self.execute(update_query)
             LOG.debug(f"Телефон пользователя изменен на {phone_number}")
         except(Exception, Error) as e:
+            self.end_transaction()
             LOG.error("Ошибка при обновление телефонного номера:", e)
 
     def get_telegramm_name(self, user_id):
@@ -114,6 +116,7 @@ class DBAdapter:  # responsible for Users and Chats
             result = self.fetch_one(query)
             return result
         except(Exception, Error) as e:
+            self.end_transaction()
             LOG.debug(f"Выдача имени телеграмм", e)
 
     def update_telegram_name(self, telegram_name, user_id):
@@ -125,6 +128,7 @@ class DBAdapter:  # responsible for Users and Chats
             self.execute(update_query)
             LOG.debug(f"Имя пользователя в ТГ изменено на {telegram_name}")
         except(Exception, Error) as e:
+            self.end_transaction()
             LOG.error("Ошибка при обновление имени в телеграм:", e)
 
     def update_telegram_link(self, tg_link, user_id):
@@ -136,6 +140,7 @@ class DBAdapter:  # responsible for Users and Chats
             self.execute(update_query)
             LOG.debug(f"Ссылка на пользователя {tg_link}")
         except(Exception, Error) as e:
+            self.end_transaction()
             LOG.error("Ошибка при сохранения ссылки пользователя:", e)
             self.end_transaction()
 
@@ -155,6 +160,7 @@ class DBAdapter:  # responsible for Users and Chats
             result = self.fetch_one(select_query)
             return result
         except(Exception, Error) as e:
+            self.end_transaction()
             LOG.error("Ошибка при получение данных пользователя:", e)
 
     def get_user_tg_link(self, user_id):
@@ -180,6 +186,7 @@ class DBAdapter:  # responsible for Users and Chats
             self.execute(update_query)
             LOG.debug(f"Имя пользователя изменено на {name}")
         except(Exception, Error) as e:
+            self.end_transaction()
             LOG.error("Ошибка при обновлении имени:", e)
 
     def create_chat(self, chat_id, user_id):
@@ -191,6 +198,7 @@ class DBAdapter:  # responsible for Users and Chats
             self.execute(create_chat_query)
             LOG.debug(f"новый чат № {chat_id}  для пользователя {user_id} создан")
         except(Exception, Error) as e:
+            self.end_transaction()
             LOG.error("Ошибка при создании нового чата:", e)
 
     def get_offers(self) -> list:
@@ -225,6 +233,7 @@ class DBAdapter:  # responsible for Users and Chats
             LOG.debug(f"Данные по заказам получены ")
             return data_list
         except(Exception, Error) as e:
+            self.end_transaction()
             LOG.error("Ошибка при получении данных о заказах :", e)
 
     def update_chat_status(self, new_status, user_id, chat_id):
@@ -237,6 +246,7 @@ class DBAdapter:  # responsible for Users and Chats
             self.execute(update_chat_query)
             LOG.debug(f"Статус чата: {chat_id} для пользователя: {user_id} обновлен. Статус чата: {new_status}")
         except(Exception, Error) as e:
+            self.end_transaction()
             LOG.error("Ошибка при обновлении статуса :", e)
 
     def get_chat(self, chat_id: int) -> dict:
@@ -250,6 +260,7 @@ class DBAdapter:  # responsible for Users and Chats
             LOG.debug(f"Найден чат {chat_id}: {result}")
             return result
         except(Exception, Error) as e:
+            self.end_transaction()
             LOG.error("Ошибка при получении данных о чате:", e)
 
     def get_chat_status(self, chat_id):
@@ -262,6 +273,7 @@ class DBAdapter:  # responsible for Users and Chats
             result = self.fetch_one(select_query)[0]
             return result
         except(Exception, Error) as e:
+            self.end_transaction()
             LOG.error(f"Ошибка при получении статуса чата {chat_id=}:", e)
 
     def insert_one(self, table, column1, column2, value1, value2):
@@ -272,6 +284,7 @@ class DBAdapter:  # responsible for Users and Chats
              """
             self.execute(create_chat_query)
         except(Exception, Error) as e:
+            self.end_transaction()
             LOG.error("Ошибка при создании нового чата:", e)
 
     def ubdate_test_data(self, table, column, value, where_column, condition):
@@ -283,6 +296,7 @@ class DBAdapter:  # responsible for Users and Chats
 
             self.execute(update_chat_query)
         except(Exception, Error) as e:
+            self.end_transaction()
             LOG.error("Ошибка при создании нового чата:", e)
 
     def get_filter(self, user_id):
@@ -306,6 +320,7 @@ class DBAdapter:  # responsible for Users and Chats
             print()
             return data_list[0]
         except(Exception, Error) as e:
+            self.end_transaction()
             LOG.error("Ошибка при получении фильтра:", e)
 
     def update_filter(self, column, value, user_id):
@@ -325,6 +340,7 @@ class DBAdapter:  # responsible for Users and Chats
             else:
                 pass
         except(Exception, Error) as e:
+            self.end_transaction()
             LOG.error("Ошибка при создании пользователя в фильтре:", e)
         finally:
             try:
@@ -335,6 +351,7 @@ class DBAdapter:  # responsible for Users and Chats
 
                 self.execute(query)
             except(Exception, Error) as e:
+                self.end_transaction()
                 LOG.error("Ошибка при установки фильтра:", e)
 
     def get_my_offers(self, user_id):
@@ -362,6 +379,7 @@ class DBAdapter:  # responsible for Users and Chats
             return my_offers
 
         except(Exception, Error) as e:
+            self.end_transaction()
             LOG.debug('Ошибка получения всех оферов в работе', e)
 
     def get_finished_offers(self, executor_id):
@@ -389,10 +407,11 @@ class DBAdapter:  # responsible for Users and Chats
             print(result)
             return result
         except(Exception, Error) as e:
+            self.end_transaction()
             LOG.debug('Ошибка в выдаче завершенных закзаов', e)
 
-    @staticmethod
-    def query_to_dict_orders(rows):
+
+    def query_to_dict_orders(self,rows):
         try:
 
             data_list = []
@@ -412,10 +431,11 @@ class DBAdapter:  # responsible for Users and Chats
             return data
 
         except(Exception, Error) as e:
+            self.end_transaction()
             print('Ошибка в конвертирование даных заказов ', e)
 
-    @staticmethod
-    def query_to_dict_finishd_orders(rows):
+
+    def query_to_dict_finishd_orders(self,rows):
         try:
             data_list = []
             data = dict()
@@ -436,6 +456,7 @@ class DBAdapter:  # responsible for Users and Chats
             return data
 
         except(Exception, Error) as e:
+            self.end_transaction()
             print('Ошибка в конвертирование даных заказов ', e)
 
     def get_traveler_amaunt(self):
@@ -447,6 +468,7 @@ class DBAdapter:  # responsible for Users and Chats
 
             return result
         except(Exception, Error) as e:
+            self.end_transaction()
             LOG.debug('Ошибка в выдаче количесвта путишественников', e)
 
     def get_previous_chat_status(self, user_id):
@@ -461,6 +483,7 @@ class DBAdapter:  # responsible for Users and Chats
 
             return result
         except(Exception, Error) as e:
+            self.end_transaction()
             LOG.debug('Ошибка в выдаче предыдущего чат статуса', e)
 
 class GiveOffer(DBAdapter):
@@ -733,8 +756,8 @@ class ShowOffers(DBAdapter):
         result = self.fetch_one(query)
         return result
 
-    @staticmethod
-    def query_to_dict(rows):
+
+    def query_to_dict(self,rows):
         try:
             data_list = []
             data = dict()
@@ -752,6 +775,7 @@ class ShowOffers(DBAdapter):
             data = data_list[0]
             return data
         except(Exception, Error) as e:
+            self.end_transaction
             print('Ошибка в конвертирование даных', e)
 
     def previous_shown_offer(self, user_id, packeg_id: int):
@@ -776,6 +800,7 @@ class ShowOffers(DBAdapter):
                 """
                 self.execute(query)
         except(Exception, Error) as e:
+            self.end_transaction()
             print('Ошибка извлечения id посылки и юзера ', e)
 
     def get_previous_row_id(self, user_id):
@@ -788,6 +813,7 @@ class ShowOffers(DBAdapter):
             result = self.fetch_one(query)[0]
             return result
         except(Exception, Error) as e:
+            self.end_transaction()
             LOG.debug('Ошибка получения ID предыдущей показанной строки', e)
 
     def get_user_id_by_package(self, package_id):
@@ -801,6 +827,7 @@ class ShowOffers(DBAdapter):
             result = self.fetch_one(query)[0]
             return result
         except(Exception, Error) as e:
+            self.end_transaction()
             LOG.debug('Ошибка извлечения ID пользователя по ID посылки')
 
 
