@@ -20,7 +20,7 @@ LOG = logging.getLogger(__name__)
 
 
 class DBAdapter:  # responsible for Users and Chats
-    def __init__(self, user, password, host, port, database, ):
+    def __init__(self, user, password, host, port, database, class_user_id):
         try:
             self.connection: "connection" = psycopg2.connect(
                 user=user,
@@ -36,6 +36,7 @@ class DBAdapter:  # responsible for Users and Chats
             raise ex
         else:
             self.create_tables(conn=self.connection)
+        self.class_user_id = class_user_id
 
     @classmethod
     def create_tables(cls, conn: "connection"):
@@ -144,24 +145,37 @@ class DBAdapter:  # responsible for Users and Chats
             LOG.error("Ошибка при сохранения ссылки пользователя:", e)
             self.end_transaction()
 
-
-
     def change_nick(self):
         pass
 
     def get_user(self, user_id):
-        try:
-            select_query = f"""
-            SELECT * 
-            FROM users
-            WHERE user_id={user_id} 
-            """
+        if user_id is not None:
+            try:
+                select_query = f"""
+                SELECT * 
+                FROM users
+                WHERE user_id={user_id} 
+                """
 
-            result = self.fetch_one(select_query)
-            return result
-        except(Exception, Error) as e:
-            self.end_transaction()
-            LOG.error("Ошибка при получение данных пользователя:", e)
+                result = self.fetch_one(select_query)
+                LOG.debug(f"Пользователь получен {user_id}: {result}")
+                return result
+            except(Exception, Error) as e:
+                self.end_transaction()
+                LOG.error("Ошибка при получение данных пользователя:", e)
+        else:
+            try:
+                select_query = f"""
+                SELECT * 
+                FROM users
+                WHERE user_id={self.class_user_id} 
+                """
+                result = self.fetch_one(select_query)
+                LOG.debug(f"Пользователь получен {user_id}: {result}")
+                return result
+            except(Exception, Error) as e:
+                self.end_transaction()
+                LOG.error("Ошибка при получение данных пользователя (переменная инициализатора класса):", e)
 
     def get_user_tg_link(self, user_id):
         try:
@@ -410,8 +424,7 @@ class DBAdapter:  # responsible for Users and Chats
             self.end_transaction()
             LOG.debug('Ошибка в выдаче завершенных закзаов', e)
 
-
-    def query_to_dict_orders(self,rows):
+    def query_to_dict_orders(self, rows):
         try:
 
             data_list = []
@@ -434,8 +447,7 @@ class DBAdapter:  # responsible for Users and Chats
             self.end_transaction()
             print('Ошибка в конвертирование даных заказов ', e)
 
-
-    def query_to_dict_finishd_orders(self,rows):
+    def query_to_dict_finishd_orders(self, rows):
         try:
             data_list = []
             data = dict()
@@ -486,11 +498,11 @@ class DBAdapter:  # responsible for Users and Chats
             self.end_transaction()
             LOG.debug('Ошибка в выдаче предыдущего чат статуса', e)
 
+
 class GiveOffer(DBAdapter):
-    def __init__(self, user, password, host, port, database, callback_data=None):
-        super().__init__(user, password, host, port, database)
+    def __init__(self, user, password, host, port, database, class_user_id, callback_data=None):
+        super().__init__(user, password, host, port, database,class_user_id)
         self.callback_data = callback_data
-        print(self.callback_data)
 
     def create_package(self, custumer_user_id):
         try:
@@ -506,6 +518,7 @@ class GiveOffer(DBAdapter):
             self.callback_data = p_id
         except(Exception, Error) as e:
             LOG.debug("Ошибка в создании посылки ", e)
+            self.end_transaction()
 
     def write_departure_city(self, departure_city, id):
         try:
@@ -693,8 +706,6 @@ class OfferFilter(BaseModel):
 
 
 class ShowOffers(DBAdapter):
-    def __init__(self, user, password, host, port, database):
-        super().__init__(user, password, host, port, database)
 
     def count_rows(self, filters: OfferFilter):
         count = f"""
@@ -714,14 +725,12 @@ class ShowOffers(DBAdapter):
                         u."UserName",
                         p.title,
                         p.description,
-                        p.departure_country,
                         p.departure_city,
-                        p.destination_country,
                         p.destination_city,
                         p.price
 
                     FROM packages as p
-                    LEFT JOIN public.users as u on u.user_id = p.custumer_user_id
+                    LEFT JOIN users as u on u.user_id = p.custumer_user_id
                     WHERE status = 'created' and departure_city ='{filters.departure_city}'
                     and  destination_city = '{filters.destination_city}' 
                     ORDER BY package_id
@@ -756,8 +765,7 @@ class ShowOffers(DBAdapter):
         result = self.fetch_one(query)
         return result
 
-
-    def query_to_dict(self,rows):
+    def query_to_dict(self, rows):
         try:
             data_list = []
             data = dict()
@@ -765,13 +773,10 @@ class ShowOffers(DBAdapter):
             data['user_name'] = rows[1]
             data['title'] = rows[2]
             data['description'] = rows[3]
-            data['departure_country'] = rows[4]
-            data['departure_city'] = rows[5]
-            data['destination_country'] = rows[6]
-            data['destination_city'] = rows[7]
-            data['price'] = rows[8]
+            data['departure_city'] = rows[4]
+            data['destination_city'] = rows[5]
+            data['price'] = rows[6]
             data_list.append(data)
-            print()
             data = data_list[0]
             return data
         except(Exception, Error) as e:
@@ -807,10 +812,21 @@ class ShowOffers(DBAdapter):
         try:
             query = f"""
                 SELECT package_id 
-                FROM public.shown_offers
+                FROM shown_offers
                 WHERE user_id = {user_id}
             """
-            result = self.fetch_one(query)[0]
+            try:
+                result = self.fetch_one(query)[0]
+            except TypeError:
+                query = f"""
+                                SELECT package_id 
+                                FROM shown_offers
+                                WHERE user_id = {self.class_user_id}
+                            """
+                result = self.fetch_one(query)[0]
+                LOG.debug(f'получен такой результат:{result}')
+                return result
+
             return result
         except(Exception, Error) as e:
             self.end_transaction()

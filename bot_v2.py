@@ -137,32 +137,35 @@ class OfferStatus(str, Enum):
 
 class ChatBot:
     def __init__(self, token: str, bd_password, bd_host, bd_port, db_user: str):
+        self.class_user_id = 0
         self.updater = Updater(token=token)
         message_handler = MessageHandler(Filters.text | Filters.contact & (~ Filters.command), self.message_handler)
-        # message_handler = MessageHandler(Filters.all, self.message_handler)
         query_handler = CallbackQueryHandler(self.callback_handler)
         self.updater.dispatcher.add_handler(message_handler)
         self.updater.dispatcher.add_handler(query_handler)
         self.generator = self.data_generator
-        # self.updater.dispatcher.add_handler(start_command_handler)
-        # self.offers = db_adapter.get_offers(
-        # start_command_handler = CommandHandler('start', self.command_start)
-
         self.offers = ShowOffers(
-            db_user, bd_password, bd_host, bd_port, 'ChatBot_p2_delivery'
+            db_user, bd_password, bd_host, bd_port, 'ChatBot_p2_delivery',self.class_user_id
         )
         self.db_adapter = DBAdapter(
-            db_user, bd_password, bd_host, bd_port, 'ChatBot_p2_delivery'
+            db_user, bd_password, bd_host, bd_port, 'ChatBot_p2_delivery', self.class_user_id
         )
         self.give_data = GiveOffer(
-            db_user, bd_password, bd_host, bd_port, 'ChatBot_p2_delivery'
+            db_user, bd_password, bd_host, bd_port, 'ChatBot_p2_delivery',  self.class_user_id
         )
         self.offers_in_work = OffersInWork(
-            db_user, bd_password, bd_host, bd_port, 'ChatBot_p2_delivery'
+            db_user, bd_password, bd_host, bd_port, 'ChatBot_p2_delivery', self.class_user_id
         )
+
+
+
 
         with open('cities.txt', encoding="UTF-8") as f:
             self.cities = f.readlines()
+
+
+
+
 
     def command_start(self, update: Update):
         if update.message.text == '/start':
@@ -248,9 +251,6 @@ class ChatBot:
         if True in list_of_true:
             return False
 
-    # def validate_latin_text(self):
-
-
 
     def show_offers(self, update: Update, context: CallbackContext):
 
@@ -311,31 +311,45 @@ class ChatBot:
             return a, sugestion
 
     def message_handler(self, update: Update, context: CallbackContext):
-
-        chat_id = update.effective_chat.id
+        # check user id
         user_id = update.effective_user.id
+        if user_id == None:
+            LOG.debug("Почему то user id не приходит от сервера телеграм")
+            try:
+                user_id = update.effective_user.id
+                LOG.debug(f'Еще раз попробовал получить id пользователя и вот результат: {user_id}')
+            except(Exception) as e:
+                LOG.debug('Не могу получить user id ', e)
+                user_id_new = update.message.chat.id
+                LOG.debug(f'Вот user id полученый из message {user_id_new}', e)
+        else:
+            if self.class_user_id == 0:
+                self.class_user_id = update.message.chat.id
 
-        user = self.db_adapter.get_user(user_id)
+
+
+
+        user = self.db_adapter.get_user(update.effective_user.id)
+
         if user is None:
             self.db_adapter.create_user(
                 first_name=update.effective_user.first_name,
                 user_id=update.effective_user.id
             )
-            user = self.db_adapter.get_user(user_id)
             LOG.debug(f"Created new user: {user}")
             self.write_telegram_name(update)
             LOG.debug(f"Telegram name is writen : {update.effective_user.name}")
             self.write_user_tg_link(update)
             LOG.debug(f"Telegram link is witen : {update.effective_user.link}")
 
-        chat = self.db_adapter.get_chat(chat_id)
+        chat = self.db_adapter.get_chat(update.effective_chat.id)
         if chat is None:
-            self.db_adapter.create_chat(chat_id, user_id)
-            chat = self.db_adapter.get_chat(chat_id)
+            self.db_adapter.create_chat(update.effective_chat.id, update.effective_user.id)
+            chat = self.db_adapter.get_chat(update.effective_chat.id)
             LOG.debug(f"Created new chat: {chat}")
 
         self.command_start(update)
-        chat_status = self.db_adapter.get_chat_status(chat_id)
+        chat_status = self.db_adapter.get_chat_status(update.effective_chat.id)
         LOG.debug(f"chat_status = {chat_status}")
 
         if chat_status == ChatStatus.ASK_USER_NAME:
@@ -462,6 +476,7 @@ class ChatBot:
 
                 if offer is not None:
                     offer_as_dict: dict = self.offers.query_to_dict(offer)
+
                     context.bot.send_message(chat_id=update.effective_chat.id,
                                              text=f"Держи заказы",
                                              reply_markup=self.next_previous_menu())
@@ -490,7 +505,7 @@ class ChatBot:
 
 
 
-        
+
 
         elif chat_status == ChatStatus.SHOW_OFFERS:
             self.show_offers(update=update, context=context)
@@ -677,7 +692,7 @@ class ChatBot:
         elif chat_status == ChatStatus.DATA_OF_DEPARTURE.value:
 
             if update.message.text == DataChose.TODAY.value:
-                today = datetime.datetime.today().strftime("%d/%m/%Y")
+                today = datetime.datetime.today().strftime('%d/%m/%Y')
                 self.db_adapter.update_chat_status(ChatStatus.TITLE.value, update.effective_user.id,
                                                    update.effective_chat.id)
 
@@ -1207,51 +1222,38 @@ class ChatBot:
             self.db_adapter.update_chat_status(ChatStatus.DATA_OF_DEPARTURE.value, update.effective_user.id,
                                                    update.effective_chat.id)
 
+        elif chat_status == ChatStatus.SHOW_OFFERS.value:
+            query = update.callback_query
+            answer = query.data
+            package_id = self.offers.get_previous_row_id(update.effective_user.id)
+            offer_user_id = self.offers.get_user_id_by_package(package_id)
+            filters = OfferWorkFilter(
+                costumer_id=offer_user_id,
+                executer_id=update.effective_user.id,
+                package_id=package_id,
+                order_chat_id=update.effective_chat.id
+            )
 
-        query = update.callback_query
-        answer = query.data
-        filters_params = self.db_adapter.get_filter(update.effective_user.id)
-        filters = OfferFilter(
-            departure_city=filters_params['departure_city'],
-            destination_city=filters_params['destination_city']
-        )
-        package_id = self.offers.get_previous_row_id(update.effective_user.id)
-        offer_user_id = self.offers.get_user_id_by_package(package_id)
-        user = self.db_adapter.get_user(offer_user_id)
-        print()
+            if answer == UserOffersActionsRequests.TAKE_OFFER.value:
+                query.answer()
 
-        filters = OfferWorkFilter(
-            costumer_id=offer_user_id,
-            executer_id=update.effective_user.id,
-            package_id=package_id,
-            order_chat_id=update.effective_chat.id
-        )
+                tg_link = self.db_adapter.get_user_tg_link(offer_user_id)
+                check_tuple = (update.effective_user.id, offer_user_id, package_id)
+                if self.offers_in_work.check_working(filters=filters) != check_tuple:
+                    context.bot.send_message(update.effective_chat.id, text=f"Вот ссылка на заказчика, напиши ему "
+                                                                            f"личное сообщение чтобы договориться ")
+                    context.bot.send_message(update.effective_chat.id, text=f"{tg_link}")
+                    self.offers_in_work.star_work(filters=filters)
 
-        if answer == UserOffersActionsRequests.TAKE_OFFER.value:
-            query.answer()
-            tg_link = self.db_adapter.get_user_tg_link(offer_user_id)
-            print(user)
-
-            print(tg_link)
-
-            check_tuple = (update.effective_user.id, offer_user_id, package_id)
-
-            if self.offers_in_work.check_working(filters=filters) != check_tuple:
-
-                # context.bot.send_contact(update.effective_chat.id, phone, name,
-                #                          )
-                context.bot.send_message(update.effective_chat.id, text=f"{tg_link}")
-
-                self.offers_in_work.star_work(filters=filters)
-            else:
-                pass
-        elif answer == UserOffersActionsRequests.CLOSE_OFFER.value:
-            query.answer()
-            text = query.message.text
-            uique_id = self.serch_unique_id(text)
-            self.offers_in_work.end_work(uique_id, filters=filters)
-            context.bot.send_message(chat_id=update.effective_chat.id,
-                                     text=f"Закрыт")
+                else:
+                    pass
+            elif answer == UserOffersActionsRequests.CLOSE_OFFER.value:
+                query.answer()
+                text = query.message.text
+                uique_id = self.serch_unique_id(text)
+                self.offers_in_work.end_work(uique_id, filters=filters)
+                context.bot.send_message(chat_id=update.effective_chat.id,
+                                         text=f"Закрыт")
 
     def validate_name(self, update, context):
         name = update.message.text
