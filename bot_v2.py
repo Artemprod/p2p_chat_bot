@@ -1197,7 +1197,8 @@ class ChatBot:
                                           f"Показать все посылки из города: <b>{filter_param['departure_city']}</b>\n"
                                           f"Которые нужно доставить в город: <b>{filter_param['destination_city']}</b>"
                                      ,
-                                     reply_markup=self.keyboard_boolean())
+                                     reply_markup=self.keyboard_boolean(),
+                                     parse_mode="HTML")
             self.db_adapter.update_chat_status(ChatStatus.TRAVALER_SHOW_OFFERS.value, update.effective_user.id,
                                                update.effective_chat.id)
 
