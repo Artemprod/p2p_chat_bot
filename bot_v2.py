@@ -20,6 +20,7 @@ from logs import init_logging
 from secrets import SECRETS
 from telegramcalendar import calendar
 import datetime
+from event_tracker import EventTracker, key as amplitude_key
 
 init_logging()
 
@@ -156,10 +157,8 @@ class ChatBot:
         self.offers_in_work = OffersInWork(
             db_user, bd_password, bd_host, bd_port, 'ChatBot_p2_delivery', self.class_user_id
         )
-
-
-
-
+        self.amplitude_key = amplitude_key
+        self.event_tarcker = EventTracker(self.amplitude_key)
         with open('cities.txt', encoding="UTF-8") as f:
             self.cities = f.readlines()
 
@@ -341,6 +340,8 @@ class ChatBot:
             LOG.debug(f"Telegram name is writen : {update.effective_user.name}")
             self.write_user_tg_link(update)
             LOG.debug(f"Telegram link is witen : {update.effective_user.link}")
+            # Трекинг события: Пользователь первый раз зашел в приложние
+            self.event_tarcker.launch_first_time(user_id=update.effective_user.id, time=datetime.datetime.now().strftime('%X'))
 
         chat = self.db_adapter.get_chat(update.effective_chat.id)
         if chat is None:
@@ -394,6 +395,9 @@ class ChatBot:
                                          text=f"С какого города поедешь?", reply_markup=ReplyKeyboardRemove())
                 self.db_adapter.update_chat_status(ChatStatus.TRAVALER_DEPARTURE_CITY.value,
                                                    update.effective_user.id, update.effective_chat.id)
+                # трекинг события: пользователь хочет взять достаку
+                self.event_tarcker.take_order_chosen(user_id=update.effective_user.id,
+                                                     time=datetime.datetime.now().strftime('%X'))
 
 
             elif update.message.text == UserActionRequest.GIVE_OFFER.value:
@@ -403,6 +407,10 @@ class ChatBot:
                                          reply_markup=ReplyKeyboardRemove())
                 self.db_adapter.update_chat_status(ChatStatus.TAKE_DEPARTURE_CITY.value, update.effective_user.id,
                                                    update.effective_chat.id)
+
+                # трекинг события: пользователь хочет заказать доставку
+                self.event_tarcker.make_order_chosen(user_id=update.effective_user.id,
+                                                     time=datetime.datetime.now().strftime('%X'))
 
 
         elif chat_status == ChatStatus.TRAVALER_DEPARTURE_CITY.value:
@@ -419,6 +427,12 @@ class ChatBot:
                     self.db_adapter.update_chat_status(ChatStatus.TRAVALER_DESTANATION_CITY.value,
                                                        update.effective_user.id,
                                                        update.effective_chat.id)
+                    # трекинг события: пользователь ввел городо отправления
+                    self.event_tarcker.make_order_messeged_departure_city(user_id=update.effective_user.id,
+                                                                              time=datetime.datetime.now().strftime('%X'),
+                                                                              text=update.message.text)
+
+
                 else:
                     sugestion = check_city[0]
                     others = check_city[1]
@@ -429,6 +443,12 @@ class ChatBot:
                     context.bot.send_message(chat_id=update.effective_chat.id,
                                                  text=f"Или вот другие варианты",
                                                  reply_markup=self.inline_menu_other_place(others))
+
+                    #трекинг события: пользователь сделал ошибку при вводе города отправления
+                    self.event_tarcker.take_order_make_mistake_departure_city(user_id=update.effective_user.id,
+                                                                              time=datetime.datetime.now().strftime('%X'),
+                                                                              text=update.message.text
+                                                                              )
 
 
 
@@ -441,6 +461,12 @@ class ChatBot:
                 check_city = self.city_validate(city=update.message.text)
                 if check_city is None:
                     self.db_adapter.update_filter('destination_city', update.message.text, update.effective_user.id)
+
+                    # трекинг события: пользователь ввел правильно название города с первого раза
+                    self.event_tarcker.take_order_destination_city_messaged(user_id=update.effective_user.id,
+                                                                              time=datetime.datetime.now().strftime('%X'),
+                                                                              text=update.message.text)
+
                     filter_param = self.db_adapter.get_filter(update.effective_user.id)
                     context.bot.send_message(chat_id=update.effective_chat.id,
                                              text=f"<b>Давай проверим</b>\n\n"
@@ -449,6 +475,7 @@ class ChatBot:
                                              ,
                                              reply_markup=self.keyboard_boolean(),
                                              parse_mode='HTML')
+
                     self.db_adapter.update_chat_status(ChatStatus.TRAVALER_SHOW_OFFERS.value, update.effective_user.id,
                                                        update.effective_chat.id)
                 else:
@@ -462,12 +489,19 @@ class ChatBot:
                                                  text=f"Или вот другие варианты",
                                                  reply_markup=self.inline_menu_other_place(others))
 
+                    # трекинг события: пользователь совершил ошибку в написании города назначения
+                    self.event_tarcker.take_order_make_mistake_destanation_city(user_id=update.effective_user.id,
+                                                                              time=datetime.datetime.now().strftime('%X'),
+                                                                              text=update.message.text)
+
 
         elif chat_status == ChatStatus.TRAVALER_SHOW_OFFERS.value:
             if update.message.text == "Да":
+                #трекинг события: пользователь подтвердил маршрут следования
+                self.event_tarcker.take_order_route_confermed(user_id=update.effective_user.id,
+                                                              time=datetime.datetime.now().strftime('%X'))
 
                 filters_params = self.db_adapter.get_filter(update.effective_user.id)
-
                 filters = OfferFilter(
                     departure_city=filters_params['departure_city'],
                     destination_city=filters_params['destination_city']
@@ -511,7 +545,11 @@ class ChatBot:
             self.show_offers(update=update, context=context)
 
         elif chat_status == ChatStatus.USER_INTERATION_WITH_HIM_OFFERS.value:
+
             if update.message.text == UserOffersActionsRequests.OFFER_IN_PROGRESS.value:
+                #трекинг события: польхователь посмотрел заказы которые у него в работе
+                self.event_tarcker.watching_statisics_inprogress_orders_shown(user_id=update.effective_user.id,
+                                                                              time=datetime.datetime.now().strftime("%X"))
                 if self.db_adapter.get_my_offers(update.effective_user.id):
                     for offer in self.db_adapter.get_my_offers(update.effective_user.id):
                         data_dict = self.db_adapter.query_to_dict_orders(offer)
@@ -523,6 +561,10 @@ class ChatBot:
                                              text=f"Нету заказов в работе")
 
             elif update.message.text == UserOffersActionsRequests.DONE_OFFERS.value:
+                # трекинг события: польхователь посмотрел заказы которые он  завершил
+                self.event_tarcker.watching_statisics_finished_orders_shown(user_id=update.effective_user.id,
+                                                                              time=datetime.datetime.now().strftime(
+                                                                                  "%X"))
                 finished_offers = self.db_adapter.get_finished_offers(update.effective_user.id)
 
                 if len(finished_offers) > 0:
@@ -635,6 +677,7 @@ class ChatBot:
                                                    update.effective_chat.id)
 
 
+# User flow пользователя который хочет заказать доставку
 
         elif chat_status == ChatStatus.TAKE_DEPARTURE_CITY.value:
             if self.is_word_on_russian(update.message.text) is False:
@@ -642,7 +685,6 @@ class ChatBot:
                                          text=f"Напиши пожалуйста текст на русском языке")
             else:
                 city = update.message.text
-
                 check_city = self.city_validate(city=update.message.text)
                 if check_city is None:
                     self.give_data.write_departure_city(city, update.effective_user.id)
@@ -650,6 +692,12 @@ class ChatBot:
                                              text=f"В какой город нужно привезти посылку?")
                     self.db_adapter.update_chat_status(ChatStatus.TAKE_DISTANATION_CITY.value, update.effective_user.id,
                                                        update.effective_chat.id)
+                    # трекинг события: пользователь который заказывает доставку ввел город отправения правильно с
+                    # первого раза
+                    self.event_tarcker.make_order_messeged_departure_city(user_id=update.effective_user.id,
+                                                                          time=datetime.datetime.now().strftime("%X"),
+                                                                          text=update.message.text
+                                                                          )
                 else:
                     sugestion = check_city[0]
                     others = check_city[1]
@@ -660,6 +708,11 @@ class ChatBot:
                     context.bot.send_message(chat_id=update.effective_chat.id,
                                                  text=f"Или вот другие варианты",
                                                  reply_markup=self.inline_menu_other_place(others))
+
+                    # трекинг события: пользователь который заказал доставку сделал ошибку при ввоже гороа отправления
+                    self.event_tarcker.make_order_make_mistake_departure_city(user_id=update.effective_user.id,
+                                                                          time=datetime.datetime.now().strftime("%X"),
+                                                                          text=update.message.text)
 
         elif chat_status == ChatStatus.TAKE_DISTANATION_CITY.value:
             if self.is_word_on_russian(update.message.text) is False:
@@ -676,6 +729,10 @@ class ChatBot:
                                              reply_markup=self.chose_date_keyboard())
                     self.db_adapter.update_chat_status(ChatStatus.DATA_OF_DEPARTURE.value, update.effective_user.id,
                                                        update.effective_chat.id)
+                    #трекинг события: пользователь который заказаывает послыку ввел город назначеие с первого раза
+                    self.event_tarcker.make_order_messeged_destination_city(user_id=update.effective_user.id,
+                                                                          time=datetime.datetime.now().strftime("%X"),
+                                                                          text=update.message.text)
                 else:
                     sugestion = check_city[0]
                     others = check_city[1]
@@ -687,19 +744,29 @@ class ChatBot:
                                                  text=f"Или вот другие варианты",
                                                  reply_markup=self.inline_menu_other_place(others))
 
+                    # трекинг события: Пользователь который хочет сделать доставку ошибся при вводе города назначения
+                    self.event_tarcker.make_order_make_mistake_destanation_city(user_id=update.effective_user.id,
+                                                                          time=datetime.datetime.now().strftime("%X"),
+                                                                          text=update.message.text)
 
 
         elif chat_status == ChatStatus.DATA_OF_DEPARTURE.value:
 
             if update.message.text == DataChose.TODAY.value:
+
                 today = datetime.datetime.today().strftime('%d/%m/%Y')
                 self.db_adapter.update_chat_status(ChatStatus.TITLE.value, update.effective_user.id,
                                                    update.effective_chat.id)
+
 
                 self.give_data.write_dispatch_date(update.effective_user.id, today)
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"Ты выбрал эту {today} дату:"
                                          )
+                # трекинг события: пользавтель выбрал  дату " сегодня "
+                self.event_tarcker.make_order_calendar_watched(user_id=update.effective_user.id,
+                                                               time=datetime.datetime.now().strftime("%X"),
+                                                               type_of_date='today')
                 self.db_adapter.update_chat_status(ChatStatus.TITLE.value, update.effective_user.id,
                                                    update.effective_chat.id)
                 context.bot.send_message(chat_id=update.effective_chat.id,
@@ -716,6 +783,10 @@ class ChatBot:
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"Ты выбрал эту {tomorrow.strftime('%d/%m/%Y')} дату:"
                                          )
+                # трекинг события: пользавтель выбрал  дату " завтра "
+                self.event_tarcker.make_order_calendar_watched(user_id=update.effective_user.id,
+                                                               time=datetime.datetime.now().strftime("%X"),
+                                                               type_of_date='tomorrow')
                 self.db_adapter.update_chat_status(ChatStatus.TITLE.value, update.effective_user.id,
                                                    update.effective_chat.id)
                 context.bot.send_message(chat_id=update.effective_chat.id,
@@ -730,6 +801,11 @@ class ChatBot:
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"Ты выбрал эту {day_after_tomorrow.strftime('%d/%m/%Y')} дату:"
                                          )
+                # трекинг события: пользавтель выбрал  дату " послезавтра "
+                self.event_tarcker.make_order_calendar_watched(user_id=update.effective_user.id,
+                                                               time=datetime.datetime.now().strftime("%X"),
+                                                               type_of_date='day_after_tomorrow')
+
                 self.db_adapter.update_chat_status(ChatStatus.TITLE.value, update.effective_user.id,
                                                    update.effective_chat.id)
                 context.bot.send_message(chat_id=update.effective_chat.id,
@@ -744,6 +820,11 @@ class ChatBot:
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"Ты выбрал эту {next_week.strftime('%d/%m/%Y')} дату:"
                                          )
+                # трекинг события: пользавтель выбрал  дату " Следующая неделя "
+                self.event_tarcker.make_order_calendar_watched(user_id=update.effective_user.id,
+                                                               time=datetime.datetime.now().strftime("%X"),
+                                                               type_of_date='next_week')
+
                 self.db_adapter.update_chat_status(ChatStatus.TITLE.value, update.effective_user.id,
                                                    update.effective_chat.id)
                 context.bot.send_message(chat_id=update.effective_chat.id,
@@ -755,6 +836,10 @@ class ChatBot:
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"Выбери дату:",
                                          reply_markup=calendar.create_calendar())
+                # трекинг события: пользавтель выбрал  посмотреть календарь
+                self.event_tarcker.make_order_calendar_watched(user_id=update.effective_user.id,
+                                                               time=datetime.datetime.now().strftime("%X"),
+                                                               type_of_date='show_calendar')
         elif chat_status == ChatStatus.TITLE.value:
             if self.is_word_on_russian(update.message.text) is False:
                 context.bot.send_message(chat_id=update.effective_chat.id,
@@ -770,19 +855,26 @@ class ChatBot:
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text='Напиши в долларах сколько ты готов заплатить за доставку'
                                          )
+                # трекинг события: пользователь ввел заголовок посылки
+                self.event_tarcker.make_order_package_title_writed(user_id=update.effective_user.id,
+                                                                   time=datetime.datetime.now().strftime("%X"),
+                                                                   text=update.message.text
+                                                                   )
                 self.db_adapter.update_chat_status(ChatStatus.PRICE.value, update.effective_user.id,
                                                    update.effective_chat.id)
         elif chat_status == ChatStatus.PRICE.value:
             price_text = update.message.text
             price = self.validate_price(price_text)
             self.give_data.write_price(price=price, custumer_user_id=update.effective_user.id)
-            self.db_adapter.update_chat_status(ChatStatus.DESCRIPTION.value, update.effective_user.id,
-                                               update.effective_chat.id)
+
             context.bot.send_message(chat_id=update.effective_chat.id,
                                      text=f'Записал, напиши описание своей посылки. Ее габариты, вес и особености'
                                           f' которые нужно знать'
 
                                      )
+            self.db_adapter.update_chat_status(ChatStatus.DESCRIPTION.value, update.effective_user.id,
+                                               update.effective_chat.id)
+
         elif chat_status == ChatStatus.DESCRIPTION.value:
             description = update.message.text
             self.give_data.write_description(description, update.effective_user.id)
@@ -796,11 +888,24 @@ class ChatBot:
                                      reply_markup=self.keyboard_boolean(),
                                      parse_mode='HTML'
                                      )
+
             self.db_adapter.update_chat_status(ChatStatus.ACECEPTED.value, update.effective_user.id,
                                                update.effective_chat.id)
         elif chat_status == ChatStatus.ACECEPTED.value:
             replay = update.message.text
             if replay == 'Да':
+                #трекинг события: пользователь создал закз на доставку
+                self.event_tarcker.make_order_order_created(user_id=update.effective_user.id,
+                                                            time=datetime.datetime.now().strftime("%X"),
+                                                            order_id=None,
+                                                            created_date=datetime.datetime.now().strftime("%Y-%m-%d"),
+                                                            price=self.give_data.get_packege_data()['price'],
+                                                            departure_city=self.give_data.get_packege_data()['departure_city'],
+                                                            destanation_city=self.give_data.get_packege_data()['destanation_city'],
+                                                            order_type=self.give_data.get_packege_data()['title'],
+                                                            description=self.give_data.get_packege_data()['description']
+                                                            )
+
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"Супер, я сейчас оповещу всех кому по пути с твоей посылкой.\n "
                                               f"На данный момент,{self.show_travelers_amount()} члеовек сказали что они путишествуют\n"
@@ -821,6 +926,7 @@ class ChatBot:
                                          reply_markup=self.change_package_data_keybord())
                 self.db_adapter.update_chat_status(ChatStatus.CHANGE_PACKAGE_MODE.value, update.effective_user.id,
                                                    update.effective_chat.id)
+
         elif chat_status == ChatStatus.CHANGE_PACKAGE_MODE.value:
 
             if update.message.text == UserOffersActionsRequests.CHANGE_PACKAGE_DEPARTURE_CITY.value:
@@ -1236,6 +1342,14 @@ class ChatBot:
             )
 
             if answer == UserOffersActionsRequests.TAKE_OFFER.value:
+                self.event_tarcker.take_order_order_taken(
+                    user_id=update.effective_user.id,
+                    time=datetime.datetime.now().strftime("%X"),
+                    order_id=None,
+                    costumer=offer_user_id
+
+                )
+
                 query.answer()
 
                 tg_link = self.db_adapter.get_user_tg_link(offer_user_id)
@@ -1245,6 +1359,7 @@ class ChatBot:
                                                                             f"личное сообщение чтобы договориться ")
                     context.bot.send_message(update.effective_chat.id, text=f"{tg_link}")
                     self.offers_in_work.star_work(filters=filters)
+
 
                 else:
                     pass

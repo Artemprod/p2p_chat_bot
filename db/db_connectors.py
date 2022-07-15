@@ -13,7 +13,6 @@ from psycopg2 import Error
 from psycopg2._psycopg import connection
 from psycopg2.extensions import cursor as PgCursor
 from pydantic import BaseModel
-
 from db.tables import CREATE_SCRIPTS
 
 LOG = logging.getLogger(__name__)
@@ -684,6 +683,47 @@ class GiveOffer(DBAdapter):
 Когда когда нужно забрать <i> {data['despatch_date']}</i>
             """
         return text
+
+    def get_packege_data(self):
+            query = f"""
+            SELECT 
+                            p.package_id,
+                            u."UserName",
+                            p.title,
+                            p.description,
+                            p.departure_country,
+                            p.departure_city,
+                            p.destination_country,
+                            p.destination_city,
+                            p.price,
+                            p.despatch_date
+
+                        FROM packages as p
+                        LEFT JOIN users as u on u.user_id = p.custumer_user_id
+                        WHERE package_id = {self.callback_data} AND 
+                        status = 'created'
+
+    """
+            rows = self.fetch_one(query)
+
+            data_list = []
+            data = dict()
+            data['package_id'] = rows[0]
+            data['user_name'] = rows[1]
+            data['title'] = rows[2]
+            data['description'] = rows[3]
+            data['departure_country'] = rows[4]
+            data['departure_city'] = rows[5]
+            data['destination_country'] = rows[6]
+            data['destination_city'] = rows[7]
+            data['price'] = rows[8]
+            data['despatch_date'] = rows[9]
+
+            data_list.append(data)
+            data = data_list[0]
+
+
+            return data
 
     def update_package_data(self, table, column, value, where_column, condition):
         try:
