@@ -12,7 +12,7 @@ RUN echo "Installing python project dependencies" \
     && pip install -r requirements.txt
 
 
-COPY bot_v2.py logs.py secrets.py cities.txt country.txt /app/
+COPY bot_v2.py logs.py secrets.py cities.txt country.txt event_tracker.py /app/
 COPY db/ /app/db
 COPY telegramcalendar/ /app/telegramcalendar
 
