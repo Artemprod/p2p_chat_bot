@@ -1,4 +1,4 @@
-amplitude-python==0.13
+amplitude-analytics==1.0.0
 coloredlogs==15.0.1
 # psycopg2==2.9.3
 SQLAlchemy==1.4.36
