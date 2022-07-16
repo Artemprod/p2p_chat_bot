@@ -23,9 +23,10 @@ import datetime
 from event_tracker import EventTracker, key as amplitude_key
 
 init_logging()
-
+logger = logging.getLogger()
 LOG = logging.getLogger(__name__)
-
+handler = logging.FileHandler('logfile.log')
+logger.addHandler(handler)
 
 class DataChose(str, Enum):
     TODAY = 'Сегодня'
