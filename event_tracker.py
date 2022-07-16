@@ -1,5 +1,6 @@
 from apscheduler.schedulers.blocking import BlockingScheduler
-from amplitude import Amplitude,BaseEvent
+from amplitude.client import Amplitude
+from amplitude.event import BaseEvent
 key = '19c426154fc175a66e0852b9ac0a2710'
 
 class EventTracker:
