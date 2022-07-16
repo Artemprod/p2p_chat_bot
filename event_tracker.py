@@ -1,10 +1,25 @@
-from amplitude import *
-key = '849a44975f00a0b9c94558809193d688'
+from apscheduler.schedulers.blocking import BlockingScheduler
+from amplitude import Amplitude,BaseEvent
+key = '19c426154fc175a66e0852b9ac0a2710'
 
 class EventTracker:
 
     def __init__(self, key):
         self.client = Amplitude(key)
+
+    def amplitude_authorizetion(self):
+
+        self.client.track(BaseEvent(
+            event_type='Python Event',
+            user_id='datamonster@gmail.com',
+            ip='127.0.0.1',
+            event_properties={
+                'keyString': 'valueString',
+                'keyInt': 11,
+                'keyBool': True
+            }
+        ))
+
 
     def launch_first_time(self, user_id, time):
         self.client.track(
