@@ -320,6 +320,9 @@ class ChatBot:
         user = self.db_adapter.get_user(update.effective_user.id)
 
         if user is None:
+            # Трекинг события: Пользователь первый раз зашел в приложние
+            self.event_tarcker.launch_first_time(user_id=str(update.effective_user.id),
+                                                 time=int(datetime.datetime.now().strftime('%X').replace(':', '')))
             self.db_adapter.create_user(
                 first_name=update.effective_user.first_name,
                 user_id=update.effective_user.id
@@ -329,9 +332,7 @@ class ChatBot:
             LOG.debug(f"Telegram name is writen : {update.effective_user.name}")
             self.write_user_tg_link(update)
             LOG.debug(f"Telegram link is witen : {update.effective_user.link}")
-            # Трекинг события: Пользователь первый раз зашел в приложние
-            self.event_tarcker.launch_first_time(user_id=str(update.effective_user.id),
-                                                 time=int(datetime.datetime.now().strftime('%X').replace(':','')))
+
 
         chat = self.db_adapter.get_chat(update.effective_chat.id)
         if chat is None:
