@@ -10,7 +10,7 @@ from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram import Update
 from telegram.ext import CallbackContext
 from telegram.ext import CallbackQueryHandler
-from telegram.ext import MessageHandler, Filters
+from telegram.ext import MessageHandler, Filters, CommandHandler
 from telegram.ext import Updater
 from db.db_connectors import (
     ShowOffers, DBAdapter, GiveOffer, OffersInWork, OfferFilter, OfferWorkFilter
@@ -169,6 +169,17 @@ class ChatBot:
         else:
             pass
 
+
+    def command_feedback(self, update: Update):
+        if update.message.text == '/feedback':
+            update.message.reply_text(text=f'Для того чтобы сообщить об ошибки, оставить свои идеи или предложить доработку\n'
+                                          f'<a href="https://notionforms.io/forms/ide-predlozeniia-osibki">Переходи по этой ссыллке</a> '
+                                          f'и заполни коротку форму.\nПосле чего я смогу получить и обработать твой запрос в короктие сроки',
+                                    parse_mode="HTML"
+                    )
+        else:
+            pass
+
     def start(self):
         self.updater.start_polling()
 
@@ -320,9 +331,6 @@ class ChatBot:
         user = self.db_adapter.get_user(update.effective_user.id)
 
         if user is None:
-            # Трекинг события: Пользователь первый раз зашел в приложние
-            self.event_tarcker.launch_first_time(user_id=str(update.effective_user.id),
-                                                 time=int(datetime.datetime.now().strftime('%X').replace(':', '')))
             self.db_adapter.create_user(
                 first_name=update.effective_user.first_name,
                 user_id=update.effective_user.id
@@ -332,7 +340,9 @@ class ChatBot:
             LOG.debug(f"Telegram name is writen : {update.effective_user.name}")
             self.write_user_tg_link(update)
             LOG.debug(f"Telegram link is witen : {update.effective_user.link}")
-
+            # Трекинг события: Пользователь первый раз зашел в приложние
+            self.event_tarcker.launch_first_time(user_id=str(update.effective_user.id),
+                                                 time=int(datetime.datetime.now().strftime('%X').replace(':','')))
 
         chat = self.db_adapter.get_chat(update.effective_chat.id)
         if chat is None:
@@ -341,6 +351,7 @@ class ChatBot:
             LOG.debug(f"Created new chat: {chat}")
 
         self.command_start(update)
+        self.command_feedback(update)
         chat_status = self.db_adapter.get_chat_status(update.effective_chat.id)
         LOG.debug(f"chat_status = {chat_status}")
 
