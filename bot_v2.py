@@ -446,8 +446,7 @@ class ChatBot:
                 else:
                     # трекинг события: пользователь сделал ошибку при вводе города отправления
                     self.event_tarcker.take_order_make_mistake_departure_city(user_id=str(update.effective_user.id),
-                                                                              time=int(datetime.datetime.now().strftime(
-                                                                                  '%X')),
+                                                                              time=int(datetime.datetime.now().strftime('%X').replace(':','')),
                                                                               text=update.message.text
                                                                               )
                     sugestion = check_city[0]
@@ -494,8 +493,7 @@ class ChatBot:
                 else:
                     # трекинг события: пользователь совершил ошибку в написании города назначения
                     self.event_tarcker.take_order_make_mistake_destanation_city(user_id=str(update.effective_user.id),
-                                                                                time=int(datetime.datetime.now().strftime(
-                                                                                    '%X')),
+                                                                                time=int(datetime.datetime.now().strftime('%X').replace(':','')),
                                                                                 text=update.message.text)
                     sugestion = check_city[0]
                     others = check_city[1]
