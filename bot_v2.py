@@ -197,6 +197,9 @@ class ChatBot:
         tg_name = update.effective_user.name
         self.db_adapter.update_telegram_name(tg_name, update.effective_user.id)
 
+    def write_created_data(self, update):
+        self.db_adapter.write_created_data(update.effective_user.id)
+
     def write_user_tg_link(self, update):
         tg_link = update.effective_user.link
         self.db_adapter.update_telegram_link(tg_link, update.effective_user.id)
@@ -274,7 +277,7 @@ class ChatBot:
                 self.offers.previous_shown_offer(update.effective_user.id, package_id)
             else:
                 context.bot.send_message(chat_id=update.effective_chat.id,
-                                         text=f"Ты посмотрел все новые заказы")
+                                         text=f"Ты посмотрел все новые заказы",parse_mode='HTML')
 
                 first_row = self.offers.get_one_row(filters=filters)
                 if first_row is not None:
@@ -282,7 +285,8 @@ class ChatBot:
                     self.offers.previous_shown_offer(update.effective_user.id, row_dict['package_id'])
                 else:
                     context.bot.send_message(chat_id=update.effective_chat.id,
-                                             text=f"Больше нет посылок которые можно взять, но когда они появятся я тебе обязательно сообщу")
+                                             text=f"Больше нет посылок которые можно взять, "
+                                                  f"но когда они появятся я тебе обязательно сообщу",parse_mode='HTML')
 
 
         elif update.message.text == UserOffersActionsRequests.SHOW_MY_OFFERS.value:
@@ -340,6 +344,7 @@ class ChatBot:
             LOG.debug(f"Telegram name is writen : {update.effective_user.name}")
             self.write_user_tg_link(update)
             LOG.debug(f"Telegram link is witen : {update.effective_user.link}")
+            self.write_created_data(update)
             # Трекинг события: Пользователь первый раз зашел в приложние
             self.event_tarcker.launch_first_time(user_id=str(update.effective_user.id),
                                                  time=int(datetime.datetime.now().strftime('%X').replace(':','')))
@@ -355,42 +360,13 @@ class ChatBot:
         chat_status = self.db_adapter.get_chat_status(update.effective_chat.id)
         LOG.debug(f"chat_status = {chat_status}")
 
-        if chat_status == ChatStatus.ASK_USER_NAME:
-            update.message.reply_text('Как тебя зовут?')
+        if chat_status == None:
             self.db_adapter.update_chat_status(
-                new_status=ChatStatus.ASK_USER_PHONE.value,
+                new_status=ChatStatus.MAIN_MENU.value,
                 user_id=update.effective_user.id,
                 chat_id=update.effective_chat.id
             )
-        elif chat_status == ChatStatus.ASK_USER_PHONE:
-            self.validate_name(update, context)
-            update.message.reply_text('Напиши свой номер телефона')
-            self.keyboard_contact(update)
 
-        elif chat_status == 3:
-            if update.message.text == UserOffersActionsRequests.SEND_TELEGAMM_NAME:
-                tg_name = update.effective_user.name
-                self.db_adapter.update_telegram_name(tg_name, update.effective_user.id)
-                context.bot.send_message(chat_id=update.effective_chat.id,
-                                         text=f"Записал")
-                context.bot.send_message(chat_id=update.effective_chat.id,
-                                         text=f"{tg_name}")
-                context.bot.send_message(chat_id=update.effective_chat.id,
-                                         text=f"что хочешь сделать?", reply_markup=self.main_menu_keyboard())
-                self.db_adapter.update_chat_status(ChatStatus.MAIN_MENU.value, update.effective_user.id,
-                                                   update.effective_chat.id)
-
-            else:
-                self.ask_phone_number(update, context)
-
-
-
-
-
-
-
-        elif chat_status == 4:  # status of main menu. Show main menu to user
-            self.main_menu_keyboard()
 
         elif chat_status == ChatStatus.MAIN_MENU.value:  # main menu handler
             if update.message.text == UserActionRequest.FIND_OFFER.value:
@@ -781,7 +757,7 @@ class ChatBot:
                                                                                                                   '')),
                                                                type_of_date='today')
 
-                today = datetime.datetime.today().strftime('%d/%m/%Y')
+                today = datetime.datetime.today()
                 self.db_adapter.update_chat_status(ChatStatus.TITLE.value, update.effective_user.id,
                                                    update.effective_chat.id)
 
@@ -1295,7 +1271,7 @@ class ChatBot:
                                          )
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"{text}",
-                                         reply_markup=self.keyboard_boolean()
+                                         reply_markup=self.keyboard_boolean(),parse_mode="HTML"
                                          )
 
                 self.db_adapter.update_chat_status(ChatStatus.ACECEPTED.value, update.effective_user.id,
