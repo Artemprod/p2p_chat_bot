@@ -119,6 +119,18 @@ class DBAdapter:  # responsible for Users and Chats
             self.end_transaction()
             LOG.debug(f"Выдача имени телеграмм", e)
 
+    def write_created_data(self, user_id):
+        try:
+            update_query = f"""
+                UPDATE users SET "created_date" = '{datetime.now()}'
+                WHERE user_id = {user_id};
+                """
+            self.execute(update_query)
+            LOG.debug(f"Дата созадния аккаунта добавлена {datetime.now()}")
+        except(Exception, Error) as e:
+            self.end_transaction()
+            LOG.error("Ошибка при добавлении даты создания аккаунта:", e)
+
     def update_telegram_name(self, telegram_name, user_id):
         try:
             update_query = f"""
