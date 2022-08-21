@@ -122,7 +122,7 @@ class DBAdapter:  # responsible for Users and Chats
     def write_created_data(self, user_id):
         try:
             update_query = f"""
-                UPDATE users SET "created_date" = '{datetime.now().strftime('%d/%m/%Y')}'
+                UPDATE users SET "created_date" = '{datetime.now().strftime('%m-%d-%Y')}'
                 WHERE user_id = {user_id};
                 """
             self.execute(update_query)
