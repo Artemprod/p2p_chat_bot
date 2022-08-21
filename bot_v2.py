@@ -761,7 +761,7 @@ class ChatBot:
                 self.db_adapter.update_chat_status(ChatStatus.TITLE.value, update.effective_user.id,
                                                    update.effective_chat.id)
 
-                self.give_data.write_dispatch_date(update.effective_user.id, today)
+                self.give_data.write_dispatch_date(update.effective_user.id, today.strftime('%d/%m/%Y'))
                 context.bot.send_message(chat_id=update.effective_chat.id,
                                          text=f"Ты выбрал эту {today} дату:"
                                          )
